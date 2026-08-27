@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+moss
+mistralai
+pandas
+numpy
+faker
+requests

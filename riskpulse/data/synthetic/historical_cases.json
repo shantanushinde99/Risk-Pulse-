@@ -1,0 +1,352 @@
+[
+  {
+    "case_id": "CASE_FRAUD_042",
+    "title": "Account Takeover via Device Change",
+    "content": "A customer account was accessed from a new device. The password was reset shortly afterward. Multiple OTP attempts failed before the registered phone number was changed and a new beneficiary was added. A high-value transfer was then requested. Outcome: Confirmed account takeover. Recommended response: BLOCK and require human verification.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_SAFE_101",
+    "title": "Normal Beneficiary Transfer",
+    "content": "Customer has used the same trusted device for over eight months. The beneficiary has received twelve previous transfers. The requested amount is within the customer's normal transaction range. Outcome: Normal transaction. Recommended response: ALLOW.",
+    "risk_category": "NORMAL",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_SUSPICIOUS_021",
+    "title": "Unusual Refund Request",
+    "content": "Customer requested a large refund. Amount is unusually high. Similar request occurred recently. Some unusual account behavior observed without strong confirmation of fraud. Outcome: Potential abuse. Recommended response: VERIFY.",
+    "risk_category": "ABUSE",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_McNf_939",
+    "title": "Operative stable paradigm",
+    "content": "First end prove fire enter capital population. First sell authority leader your you available. Media car give attention each.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_ITtN_427",
+    "title": "Streamlined multi-tasking access",
+    "content": "Use billion there enough threat. Choice example decision garden reach table measure. Town suffer begin interest everybody.",
+    "risk_category": "SCAM",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_OqkV_052",
+    "title": "Organic neutral strategy",
+    "content": "Act away third tough nation strong old. Involve among half value. Together decide economic.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_ANVj_158",
+    "title": "Front-line cohesive website",
+    "content": "Agent say forward us soon ten. Environment skin blue the teach.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_wtYo_337",
+    "title": "Face-to-face 4thgeneration protocol",
+    "content": "Foreign ten whom evidence political hundred. Former agree theory end oil worker although.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_UYuB_965",
+    "title": "Robust multimedia budgetary management",
+    "content": "Couple and job mind southern rather vote. Hair attorney professional form finish. Rest feel finally impact.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_imAQ_648",
+    "title": "Multi-tiered systematic synergy",
+    "content": "Notice image street fight decision size parent focus. Kind degree list top somebody college.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_QONv_148",
+    "title": "Cross-group web-enabled encoding",
+    "content": "Southern challenge animal worker particularly. Lay though offer responsibility.",
+    "risk_category": "ABUSE",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_pjPS_676",
+    "title": "Adaptive web-enabled throughput",
+    "content": "Despite sound receive let newspaper true. Lead soon property write.",
+    "risk_category": "NORMAL",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_NUGB_957",
+    "title": "Reactive local complexity",
+    "content": "Else easy point she miss phone ever. Require doctor from throw. Catch discuss really relationship.",
+    "risk_category": "ABUSE",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_vIDA_166",
+    "title": "Centralized demand-driven instruction set",
+    "content": "Watch affect thing offer local wall fear hope. Mrs same son today major event. Ahead from quickly identify close level camera.",
+    "risk_category": "ABUSE",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_zLKQ_980",
+    "title": "Assimilated attitude-oriented project",
+    "content": "Term consider employee force. Force seven here sell story edge bank. See appear weight.",
+    "risk_category": "ABUSE",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_Wbpm_310",
+    "title": "Ameliorated regional collaboration",
+    "content": "List boy way let. Short cold parent security boy.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_LbtK_241",
+    "title": "Synergistic homogeneous infrastructure",
+    "content": "Option store drug recent. Sure outside building worker site.",
+    "risk_category": "SCAM",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_QxeG_586",
+    "title": "Stand-alone global access",
+    "content": "Black whether player stock religious itself safe. Pattern try simple let stay. Environmental system store beautiful think during let particular.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_FulF_650",
+    "title": "Extended heuristic website",
+    "content": "Evidence other they new might course. Result major serve real position.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_fsoz_770",
+    "title": "Team-oriented dynamic function",
+    "content": "List most international second former reflect. Fill discover return firm sea. Course school everybody operation. Others wonder strategy fast guess few remain.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_dJsS_240",
+    "title": "De-engineered scalable system engine",
+    "content": "Their off light key. Whole education technology box. Husband available picture approach.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_fphJ_294",
+    "title": "Virtual intangible portal",
+    "content": "Difficult mission late kind team wrong figure perform. Whether between several personal enough ball dream necessary. Able late order fact. Explain executive teacher author do.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_BhIo_493",
+    "title": "Stand-alone coherent flexibility",
+    "content": "Arrive society organization station. Keep light fight I evening.",
+    "risk_category": "SCAM",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_fMcB_877",
+    "title": "User-centric fresh-thinking portal",
+    "content": "Before while structure. Onto again share start office several compare.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_lLBO_874",
+    "title": "Pre-emptive background leverage",
+    "content": "Four prove tax form really explain. Spend nearly lawyer fire follow wife. Ten stay ability thank left approach.",
+    "risk_category": "ABUSE",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_WFOC_859",
+    "title": "Virtual actuating database",
+    "content": "Capital explain thing machine ahead picture son. Financial add impact different.",
+    "risk_category": "SCAM",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_PjFT_171",
+    "title": "Implemented multimedia strategy",
+    "content": "Strong woman during necessary himself two. Second carry attorney significant take future skin.",
+    "risk_category": "NORMAL",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_UtLL_404",
+    "title": "Switchable mobile collaboration",
+    "content": "Machine forward several help usually thank wonder. Occur do simply analysis seat. History professional star wonder manager already.",
+    "risk_category": "ABUSE",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_gCgH_895",
+    "title": "Persevering 24/7 success",
+    "content": "That wide avoid sit enter perhaps. Power system system teacher here first.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_NepO_780",
+    "title": "Synergized executive emulation",
+    "content": "Within set region beyond coach federal. Animal someone fall.",
+    "risk_category": "SCAM",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_pHAK_562",
+    "title": "Synergized contextually-based concept",
+    "content": "Participant him raise marriage. Central leave effect effort act source top quality.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_wLtO_217",
+    "title": "Optimized system-worthy extranet",
+    "content": "Current his low down occur. Fast recognize against stop how account ten. Treat seat strategy.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_ZwoO_439",
+    "title": "Ergonomic regional extranet",
+    "content": "Best physical always small almost half capital travel. Section compare car much will most.",
+    "risk_category": "SCAM",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_EZsV_424",
+    "title": "Mandatory bifurcated Local Area Network",
+    "content": "Senior difficult put purpose. Whose source hand so add Mr.",
+    "risk_category": "SCAM",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_LyOx_754",
+    "title": "Customer-focused systematic emulation",
+    "content": "People wall foreign. Determine as statement travel few impact cause watch. You break doctor Mr home.",
+    "risk_category": "NORMAL",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_LVUj_586",
+    "title": "Operative solution-oriented attitude",
+    "content": "Impact week allow have kitchen wear talk between. Name within grow huge couple business. Begin deep police wife anything four writer.",
+    "risk_category": "SCAM",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_WJnL_931",
+    "title": "Extended discrete groupware",
+    "content": "Able teach certain candidate economy company produce ago. Group small open.",
+    "risk_category": "SCAM",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_diVA_024",
+    "title": "Progressive bifurcated synergy",
+    "content": "Large gun order later develop past road. Feeling poor all your suggest international blue.",
+    "risk_category": "ABUSE",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_uMje_711",
+    "title": "De-engineered even-keeled process improvement",
+    "content": "Republican herself our far measure involve soldier. Table prepare shoulder result. Involve thousand including still human. Fine fine effort well.",
+    "risk_category": "ABUSE",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_ffBg_711",
+    "title": "User-friendly user-facing hub",
+    "content": "Art what no prove improve them wait. Test return why outside goal official.",
+    "risk_category": "ABUSE",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_ogwJ_327",
+    "title": "Multi-layered bifurcated task-force",
+    "content": "Difficult investment night should perform push news. Upon stop environment Congress reflect finally fund accept.",
+    "risk_category": "MONEY_LAUNDERING",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_ejVO_296",
+    "title": "Assimilated background synergy",
+    "content": "Heavy law church find food. Other third choose senior anyone bank kitchen. Magazine kind event sense box involve.",
+    "risk_category": "SCAM",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_HQtc_497",
+    "title": "Face-to-face hybrid policy",
+    "content": "Daughter war should. Face build market issue can.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_JQZw_838",
+    "title": "Compatible hybrid support",
+    "content": "Affect TV television office of remember.",
+    "risk_category": "ACCOUNT_TAKEOVER",
+    "severity": "MEDIUM"
+  },
+  {
+    "case_id": "CASE_zbuk_641",
+    "title": "Secured logistical solution",
+    "content": "Join black job hundred. How financial fund four. Baby plan most create.",
+    "risk_category": "SCAM",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_pgjq_552",
+    "title": "Exclusive context-sensitive portal",
+    "content": "Concern significant management senior. Large under north play person ten physical character.",
+    "risk_category": "ABUSE",
+    "severity": "LOW"
+  },
+  {
+    "case_id": "CASE_OtYr_177",
+    "title": "Reverse-engineered analyzing help-desk",
+    "content": "Financial later arm story. Popular within bed order. Leg never social time last special.",
+    "risk_category": "NORMAL",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_EGjd_359",
+    "title": "Organized bi-directional workforce",
+    "content": "Mean common easy just. Model particular hair truth hold simple. Appear piece free form newspaper hit edge surface.",
+    "risk_category": "ABUSE",
+    "severity": "CRITICAL"
+  },
+  {
+    "case_id": "CASE_fLQj_925",
+    "title": "Monitored fault-tolerant projection",
+    "content": "Organization visit finally heavy. Spend prove stock school rate money. Meet adult final week game she.",
+    "risk_category": "ABUSE",
+    "severity": "HIGH"
+  },
+  {
+    "case_id": "CASE_jesY_332",
+    "title": "Cross-platform motivating throughput",
+    "content": "Also from short capital heavy class story. Speak close join improve put down know expect. Doctor dream whole six tough create question.",
+    "risk_category": "ABUSE",
+    "severity": "LOW"
+  }
+]
