@@ -68,7 +68,7 @@ export default function VoiceAgentPage() {
     if (isConnected) {
       pollInterval = setInterval(async () => {
         try {
-          const res = await fetch("http://localhost:8000/api/vapi/latest-evaluations");
+          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/latest-evaluations`);
           const data = await res.json();
           if (data.evaluations && data.evaluations.length > 0) {
             setToolCalls(data.evaluations.map((ev: any) => ({

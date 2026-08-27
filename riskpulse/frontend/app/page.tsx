@@ -23,7 +23,7 @@ export default function Home() {
     setLoading(true);
     setData(null);
     try {
-      const res = await fetch(`http://localhost:8000/api/evaluate-custom`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/evaluate-custom`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -46,7 +46,7 @@ export default function Home() {
     setLoading(true);
     setData(null);
     try {
-      const res = await fetch(`http://localhost:8000/api/scenarios/${scenarioId}/run`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/scenarios/${scenarioId}/run`, {
         method: "POST"
       });
       const result = await res.json();
