@@ -34,14 +34,7 @@ export default function RootLayout({
                 <span className="w-5 h-5 flex items-center justify-center shrink-0">⊞</span>
                 <span className="hidden md:block">Dashboard</span>
               </Link>
-              <Link href="/analytics" className="px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors font-medium text-sm flex items-center gap-3">
-                <span className="w-5 h-5 flex items-center justify-center shrink-0">📈</span>
-                <span className="hidden md:block">Analytics</span>
-              </Link>
-              <Link href="/architecture" className="px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors font-medium text-sm flex items-center gap-3">
-                <span className="w-5 h-5 flex items-center justify-center shrink-0">⬡</span>
-                <span className="hidden md:block">Architecture</span>
-              </Link>
+
               <Link href="/voice-agent" className="px-3 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors font-medium text-sm flex items-center gap-3">
                 <span className="w-5 h-5 flex items-center justify-center shrink-0">🎙</span>
                 <span className="hidden md:block">Voice Agent</span>
