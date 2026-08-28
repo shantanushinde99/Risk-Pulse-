@@ -310,6 +310,12 @@ def _build_spoken_response(action_type: str, decision: str, risk_score: int, exp
 def get_latest_vapi_evaluations():
     return {"evaluations": recent_vapi_evaluations[-10:]}
 
+@app.post("/api/vapi/reset")
+def reset_vapi_state():
+    recent_vapi_evaluations.clear()
+    verified_calls.clear()
+    return {"status": "ok", "message": "State reset successfully"}
+
 # Store recent events for the frontend UI
 recent_vapi_evaluations = []
 

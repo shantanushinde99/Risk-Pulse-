@@ -62,6 +62,11 @@ export default function VoiceAgentPage() {
     toolCallEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [toolCalls]);
 
+  // Reset backend state on mount so it's fresh for every new viewer
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/reset`, { method: "POST" }).catch(console.error);
+  }, []);
+
   // Poll backend for latest evaluations while connected
   useEffect(() => {
     let pollInterval: NodeJS.Timeout;
