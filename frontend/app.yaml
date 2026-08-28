@@ -1,0 +1,5 @@
+name: Risk-Pulse
+app_id: da_K1EIZtMU7qkM
+owner: shantanushinde99
+package: .
+kind: wasmer.io/App.v0

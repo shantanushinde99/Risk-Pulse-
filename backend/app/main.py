@@ -271,10 +271,7 @@ def _build_spoken_response(action_type: str, decision: str, risk_score: int, exp
                 f"Please visit your nearest branch with a valid photo ID. Your reference number is {ref_id}."
             )
         else:
-            return (
-                f"Thank you. I have successfully verified your identity. "
-                f"SYSTEM INSTRUCTION: Please immediately call the appropriate tool for the customer's original request now so it can be fully processed."
-            )
+            return "Thank you. I have successfully verified your identity. Please immediately proceed with executing the original request now."
 
     if decision == "BLOCK":
         return (
@@ -313,6 +310,11 @@ def _build_spoken_response(action_type: str, decision: str, risk_score: int, exp
 def get_latest_vapi_evaluations():
     return {"evaluations": recent_vapi_evaluations[-10:]}
 
+# Store recent events for the frontend UI
+recent_vapi_evaluations = []
+
+# Store verified customer IDs per call to prevent state leaking across different phone calls!
+verified_calls = {}
 
 @app.post("/api/vapi/webhook")
 async def vapi_webhook(request: Request):
@@ -321,10 +323,12 @@ async def vapi_webhook(request: Request):
     Every tool runs through the full RiskPulse pipeline:
     Moss semantic retrieval → Deterministic Risk Engine → Decision.
     """
-    global verified_customer_id
+    global verified_calls
     
     payload = await request.json()
     message = payload.get("message", {})
+    call_obj = message.get("call", {})
+    call_id = call_obj.get("id", "unknown_call")
 
     # Only process tool-calls messages
     if message.get("type") != "tool-calls":
@@ -358,11 +362,12 @@ async def vapi_webhook(request: Request):
 
         # Determine customer_id:
         # - For verify_identity, use the customer_id from the tool args
-        # - For all other tools, use the verified_customer_id from session (if available)
+        # - For all other tools, use the verified_customer_id from the current call session (if available)
+        current_call_verified_id = verified_calls.get(call_id)
         if action_type == "VERIFY_IDENTITY":
             customer_id = args.get("customer_id", "")
-        elif verified_customer_id:
-            customer_id = verified_customer_id
+        elif current_call_verified_id:
+            customer_id = current_call_verified_id
         else:
             # Not yet verified — use a placeholder for risk evaluation
             # The risk engine will assess based on action signals + Moss context only
@@ -401,8 +406,10 @@ async def vapi_webhook(request: Request):
         risk_decision, eval_ms = evaluate_risk(action, customer, context_items)
 
         # Post-verification logic:
-        # If the caller was already verified, override the risk decision to ALLOW
+        # If the caller was already verified IN THIS SPECIFIC CALL, override the risk decision to ALLOW
         # because identity has been confirmed against behavioral history.
+        verified_customer_id = verified_calls.get(call_id)
+        
         if verified_customer_id and action_type != "VERIFY_IDENTITY":
             risk_decision.decision = "ALLOW"
             risk_decision.explanation = (
@@ -410,14 +417,14 @@ async def vapi_webhook(request: Request):
                 f"against behavioral history. Original risk score was {risk_decision.risk_score}."
             )
             risk_decision.risk_score = 0
-            verified_customer_id = None  # Reset after processing the pending request
+            # We DON'T delete it here so they stay verified for the rest of this phone call!
 
         # For VERIFY_IDENTITY: if the behavioral check doesn't hard-block,
-        # treat it as a successful verification and store the customer_id
+        # treat it as a successful verification and store the customer_id for this call ID
         if action_type == "VERIFY_IDENTITY" and risk_decision.decision in ("VERIFY", "ALLOW", "ESCALATE"):
             risk_decision.decision = "ALLOW"
             risk_decision.explanation = "Identity successfully verified against behavioral history."
-            verified_customer_id = customer_id
+            verified_calls[call_id] = customer_id
             
         print(f"[VAPI] {fn_name} -> {risk_decision.decision} | Score: {risk_decision.risk_score} | Moss: {moss_ms:.1f}ms | Eval: {eval_ms:.1f}ms")
 
