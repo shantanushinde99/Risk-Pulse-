@@ -306,6 +306,8 @@ def _build_spoken_response(action_type: str, decision: str, risk_score: int, exp
 # VAPI Endpoints
 # ─────────────────────────────────────────────
 
+
+
 @app.get("/api/vapi/latest-evaluations")
 def get_latest_vapi_evaluations():
     return {"evaluations": recent_vapi_evaluations[-10:]}
