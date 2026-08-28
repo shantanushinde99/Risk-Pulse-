@@ -7,7 +7,7 @@ echo ===========================================
 echo.
 
 echo Starting Backend API (FastAPI) in a new window...
-start "RiskPulse Backend" cmd /k "cd /d "%~dp0backend" && ..\..\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000"
+start "RiskPulse Backend" cmd /k "cd /d "%~dp0backend" && ..\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000"
 
 echo Starting Frontend Dashboard (Next.js) in a new window...
 start "RiskPulse Frontend" cmd /k "cd /d "%~dp0frontend" && npm run dev"

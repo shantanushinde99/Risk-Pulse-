@@ -12,7 +12,7 @@ echo Please wait, this may take a moment...
 echo.
 
 cd /d "%~dp0backend\scripts"
-"..\..\..\.venv\Scripts\python.exe" ingest_moss.py
+"..\..\.venv\Scripts\python.exe" ingest_moss.py
 
 echo.
 echo ====================================================
