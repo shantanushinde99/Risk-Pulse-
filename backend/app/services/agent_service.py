@@ -8,7 +8,7 @@ from app.models.schemas import RiskDecision
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
 
 MISTRAL_API_KEY = os.getenv("LLM_API_KEY")
-MISTRAL_MODEL = os.getenv("LLM_MODEL", "mistral-large-latest")
+MISTRAL_MODEL = os.getenv("LLM_MODEL", "mistral-small-latest")
 
 def get_fallback_response(decision: str) -> str:
     if decision == "ALLOW":

@@ -3,7 +3,7 @@ import json
 from typing import Optional
 from app.models.schemas import CustomerProfile
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SYNTHETIC_DIR = os.path.join(BASE_DIR, "data", "synthetic")
 
 def load_customer(customer_id: str) -> Optional[CustomerProfile]:
