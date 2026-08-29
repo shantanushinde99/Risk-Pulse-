@@ -103,16 +103,24 @@ export default function VoiceAgentPage() {
           const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/latest-evaluations`);
           const data = await res.json();
           if (data.evaluations && data.evaluations.length > 0) {
+            const newCalls = data.evaluations.map((ev: any) => ({
+              toolName: ev.toolName,
+              args: ev.args,
+              result: ev.result,
+              decision: ev.decision,
+              explanation: ev.explanation,
+              score: ev.score,
+              moss_ms: ev.moss_ms,
+              eval_ms: ev.eval_ms,
+              timestamp: new Date(ev.timestamp)
+            }));
             setToolCalls((prev) => {
-              if (prev.length === data.evaluations.length) return prev; // Don't trigger re-render if nothing changed
-              return data.evaluations.map((ev: any) => ({
-                toolName: ev.toolName,
-                args: ev.args,
-                result: ev.result,
-                decision: ev.decision,
-                explanation: ev.explanation,
-                timestamp: new Date(ev.timestamp)
-              }));
+              // Compare stringified data to avoid unnecessary re-renders
+              // but always update when backend has new decisions/explanations
+              const prevKey = prev.map(p => `${p.toolName}|${p.decision}`).join(",");
+              const newKey = newCalls.map((n: any) => `${n.toolName}|${n.decision}`).join(",");
+              if (prevKey === newKey && prev.length === newCalls.length) return prev;
+              return newCalls;
             });
           }
         } catch (e) {
