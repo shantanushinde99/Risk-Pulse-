@@ -49,8 +49,10 @@ async def search_context(query: str, top_k: int = 5, customer_id: str = None) ->
         
         formatted_results = []
         for doc in results.docs:
-            # Prevent context leakage: Only accept documents that belong to this customer
-            if customer_id and customer_id not in doc.text:
+            # Prevent context leakage: Only filter out timeline documents belonging to OTHER customers.
+            # Universal documents like policies and cases should ALWAYS be included.
+            is_timeline = "document_type: customer_timeline" in doc.text
+            if is_timeline and customer_id and customer_id not in doc.text:
                 continue
                 
             formatted_results.append({
