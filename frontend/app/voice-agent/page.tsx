@@ -76,14 +76,17 @@ export default function VoiceAgentPage() {
           const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/latest-evaluations`);
           const data = await res.json();
           if (data.evaluations && data.evaluations.length > 0) {
-            setToolCalls(data.evaluations.map((ev: any) => ({
-              toolName: ev.toolName,
-              args: ev.args,
-              result: ev.result,
-              decision: ev.decision,
-              explanation: ev.explanation,
-              timestamp: new Date(ev.timestamp)
-            })));
+            setToolCalls((prev) => {
+              if (prev.length === data.evaluations.length) return prev; // Don't trigger re-render if nothing changed
+              return data.evaluations.map((ev: any) => ({
+                toolName: ev.toolName,
+                args: ev.args,
+                result: ev.result,
+                decision: ev.decision,
+                explanation: ev.explanation,
+                timestamp: new Date(ev.timestamp)
+              }));
+            });
           }
         } catch (e) {
           console.error("Failed to fetch evaluations", e);
