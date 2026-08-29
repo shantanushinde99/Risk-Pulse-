@@ -15,7 +15,8 @@
 3. **Zero-Latency Moss Semantic Retrieval:** Utilizes Moss (a real-time semantic search engine built in Rust and WebAssembly) to fetch historical fraud cases and security policies in sub-10ms. This enables a speed up to 100x faster than traditional vector databases.
 4. **Context Leakage Prevention:** Built-in metadata filtering during semantic search to ensure that one user's fraud history does not inadvertently penalize another user's baseline risk score during evaluation.
 5. **Deterministic Hybrid Risk Engine:** Combines static rule thresholds (e.g., 3x average amount) with unstructured semantic insights (e.g., matching a historical fraud case) to output a 0-100 risk score.
-6. **Automated Resend Email Triggers:** Instantly fires off custom transaction confirmation emails upon a successful `ALLOW` decision.
+6. **Real-time Email Authentication:** Frontend UI prompts users to type their registered email to authenticate high-risk actions mid-call, preventing leaked Customer IDs from being exploited.
+7. **Automated Mailjet Email Triggers:** Instantly fires off custom transaction confirmation emails via Mailjet upon a successful `ALLOW` decision and email verification.
 
 ## 🛑 The Problem Statement
 
@@ -69,6 +70,7 @@ sequenceDiagram
     participant RP as RiskPulse
     participant M as Moss Vector DB
     participant B as Bank API
+    participant UI as Frontend UI
 
     U->>V: "Transfer $50,000 to John"
     V->>RP: 1. Propose Action (Webhook)
@@ -84,7 +86,14 @@ sequenceDiagram
         RP->>B: 5b. Decision: ALLOW (Execute API)
         B-->>RP: Success
         RP-->>V: Return Success Status
-        V-->>U: "Transfer completed successfully."
+        V-->>U: "Transfer completed successfully. Please type your email to confirm."
+        U->>UI: Types email address
+        UI->>RP: 6. /set-auth-email (Verify match)
+        alt Email Mismatch
+            RP-->>UI: Block transaction retroactively
+        else Email Match
+            RP->>UI: Send Mailjet Confirmation Receipt
+        end
     end
 ```
 
@@ -145,7 +154,9 @@ graph TD
 
         Moss -.->|3. Return Matched Timelines| RiskEngine
         RiskEngine -->|4. Risk Score Evaluation| Decision[Decision Engine]
-        Decision -->|5. Trigger Email| Resend[Resend API]
+        Decision -->|5. Require Email Auth| UIAuth[Frontend Email Input]
+        UIAuth -->|6. Verify Identity| Decision
+        Decision -->|7. Trigger Receipt| Mailjet[Mailjet API]
     end
 
     Decision -.->|BLOCK / ALLOW| VAPI
@@ -163,7 +174,7 @@ graph TD
 - **Frontend:** Next.js, React, TailwindCSS, Framer Motion, Lucide Icons
 - **Backend:** Python, FastAPI, Uvicorn, Pydantic
 - **AI/Vector:** Moss Vector DB, Mistral AI (Optional fallback LLM)
-- **Voice & Email:** VAPI, Resend
+- **Voice & Email:** VAPI, Mailjet
 - **Data:** Synthetic PaySim Dataset
 
 ---
@@ -176,7 +187,7 @@ graph TD
 - Node.js 18+
 - Moss Project ID & API Key
 - VAPI API Key
-- Resend API Key
+- Mailjet API Key and Secret Key
 - Ngrok (for local webhook tunneling)
 
 ### 1. Environment Setup
@@ -187,7 +198,8 @@ Create a `.env` file in the `riskpulse/backend` directory:
 MOSS_PROJECT_ID=your_moss_project_id
 MOSS_PROJECT_KEY=your_moss_api_key
 
-RESEND_API_KEY=your_resend_api_key
+MAILJET_API_KEY=your_mailjet_api_key
+MAILJET_SECRET_KEY=your_mailjet_secret_key
 ```
 
 ### 2. Ingest Synthetic Data into Moss
