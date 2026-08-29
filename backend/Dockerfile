@@ -15,5 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Run the FastAPI server. Render uses the $PORT environment variable.
+# Expose port for Back4App
+EXPOSE 8000
+
+# Run the FastAPI server
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
