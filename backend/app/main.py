@@ -366,7 +366,7 @@ async def vapi_webhook(request: Request):
     Every tool runs through the full RiskPulse pipeline:
     Moss semantic retrieval → Deterministic Risk Engine → Decision.
     """
-    global verified_calls
+    global verified_calls, pending_email_confirmation
     
     payload = await request.json()
     message = payload.get("message", {})
