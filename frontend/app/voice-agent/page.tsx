@@ -70,28 +70,26 @@ export default function VoiceAgentPage() {
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/reset`, { method: "POST" }).catch(console.error);
   }, []);
 
-  // Sync auth email to backend whenever it changes (debounced)
-  useEffect(() => {
-    if (!authEmail) { setEmailStatus("idle"); return; }
+  // Send auth email to backend for verification when user clicks Send
+  const submitEmail = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail.trim()) return;
     setEmailStatus("idle");
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/set-auth-email`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: authEmail }),
-        });
-        const data = await res.json();
-        if (data.verified === true) {
-          setEmailStatus("verified");
-        } else if (data.verified === false) {
-          setEmailStatus("mismatch");
-        }
-      } catch (e) {
-        console.error("Failed to sync auth email", e);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/set-auth-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail }),
+      });
+      const data = await res.json();
+      if (data.verified === true) {
+        setEmailStatus("verified");
+      } else if (data.verified === false) {
+        setEmailStatus("mismatch");
       }
-    }, 400);
-    return () => clearTimeout(timer);
+    } catch (e) {
+      console.error("Failed to verify auth email", e);
+    }
   }, [authEmail]);
 
   // Poll backend for latest evaluations while connected
@@ -562,12 +560,12 @@ export default function VoiceAgentPage() {
                     Send
                   </button>
                 </form>
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-slate-500" />
+                <form onSubmit={submitEmail} className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-slate-500 shrink-0" />
                   <input
                     type="email"
                     value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
+                    onChange={(e) => { setAuthEmail(e.target.value); setEmailStatus("idle"); }}
                     placeholder="Enter your registered email for confirmation..."
                     className={`flex-1 bg-white/5 border rounded-lg px-4 py-2 text-sm text-white focus:outline-none placeholder:text-slate-600 ${
                       emailStatus === "verified"
@@ -577,22 +575,23 @@ export default function VoiceAgentPage() {
                         : "border-white/10 focus:border-cyan-500/50"
                     }`}
                   />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+                  >
+                    Verify
+                  </button>
                   {emailStatus === "verified" && (
                     <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-medium whitespace-nowrap">
-                      Verified & Sent
+                      ✓ Sent
                     </span>
                   )}
                   {emailStatus === "mismatch" && (
                     <span className="text-[10px] uppercase tracking-wider text-rose-400 font-medium whitespace-nowrap">
-                      Mismatch
+                      ✗ Mismatch
                     </span>
                   )}
-                  {emailStatus === "idle" && authEmail && (
-                    <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-medium whitespace-nowrap">
-                      Linked
-                    </span>
-                  )}
-                </div>
+                </form>
               </div>
             )}
           </div>
