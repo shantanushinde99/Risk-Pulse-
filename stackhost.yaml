@@ -1,0 +1,22 @@
+# StackHost configuration file
+# Version: 2.0.0
+
+user:
+  name: shantanushinde99
+  github: shantanushinde99
+
+runtime:
+  image: python:3.12-slim
+
+commands:
+  package: build-essential libgomp1
+  build:
+    - cd backend && pip install --no-cache-dir -r requirements.txt
+  start: cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+repository:
+  branch: main
+  auto_deploy: true
+
+env:
+  - PORT:8000
