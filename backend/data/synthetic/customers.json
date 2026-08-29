@@ -18,6 +18,7 @@
   },
   {
     "customer_id": "C1666544295",
+    "email": "mt6505094@gmail.com",
     "account_age": 1252,
     "average_transaction_amount": 8495.86,
     "transaction_frequency": 17,
@@ -126,6 +127,7 @@
   },
   {
     "customer_id": "C1265012928",
+    "email": "gcpacc1345@gmail.com",
     "account_age": 1845,
     "average_transaction_amount": 8176.21,
     "transaction_frequency": 28,

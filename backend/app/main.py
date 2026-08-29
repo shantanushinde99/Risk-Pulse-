@@ -314,8 +314,10 @@ def get_latest_vapi_evaluations():
 
 @app.post("/api/vapi/reset")
 def reset_vapi_state():
+    global demo_auth_email
     recent_vapi_evaluations.clear()
     verified_calls.clear()
+    demo_auth_email = ""
     return {"status": "ok", "message": "State reset successfully"}
 
 # Store recent events for the frontend UI
@@ -323,6 +325,39 @@ recent_vapi_evaluations = []
 
 # Store verified customer IDs per call to prevent state leaking across different phone calls!
 verified_calls = {}
+
+# Email typed by the user in the frontend for authentication
+demo_auth_email = ""
+
+# Pending email confirmation: stores the last ALLOWED transaction so we can
+# send the confirmation email only after the user types their registered email.
+pending_email_confirmation = {}
+
+@app.post("/api/vapi/set-auth-email")
+async def set_auth_email(request: Request):
+    global demo_auth_email, pending_email_confirmation
+    body = await request.json()
+    demo_auth_email = body.get("email", "").strip().lower()
+    print(f"[Auth] Frontend auth email set to: {demo_auth_email}")
+
+    # If there is a pending confirmation, verify the email now
+    if pending_email_confirmation and demo_auth_email:
+        registered = pending_email_confirmation.get("registered_email", "").strip().lower()
+        if demo_auth_email == registered:
+            # Email matches! Send the confirmation email.
+            send_confirmation_email(
+                pending_email_confirmation["customer_email"],
+                pending_email_confirmation["action_type"],
+                pending_email_confirmation["amount"]
+            )
+            result = {"status": "ok", "verified": True, "message": "Email verified. Confirmation sent!"}
+            pending_email_confirmation = {}  # Clear after sending
+            return result
+        else:
+            print(f"[Auth] Email mismatch: '{demo_auth_email}' != '{registered}'")
+            return {"status": "blocked", "verified": False, "message": "Email does not match registered account."}
+
+    return {"status": "ok", "email": demo_auth_email}
 
 @app.post("/api/vapi/webhook")
 async def vapi_webhook(request: Request):
@@ -436,18 +471,34 @@ async def vapi_webhook(request: Request):
             
         print(f"[VAPI] {fn_name} -> {risk_decision.decision} | Score: {risk_decision.risk_score} | Moss: {moss_ms:.1f}ms | Eval: {eval_ms:.1f}ms")
 
-        # Send confirmation email if a state-changing action was fully allowed
+        # If action is ALLOWED and customer has an email on file,
+        # DON'T send the email yet. Store a pending confirmation and
+        # ask the user to type their registered email for verification.
+        ask_for_email = False
         if risk_decision.decision == "ALLOW" and action_type != "VERIFY_IDENTITY":
             if getattr(customer, "email", None):
-                send_confirmation_email(customer.email, action_type, amount)
-            else:
-                print(f"[Email Service] Skipping: Customer {customer_id} has no email on file.")
+                pending_email_confirmation = {
+                    "customer_email": customer.email,
+                    "registered_email": customer.email,
+                    "action_type": action_type,
+                    "amount": amount,
+                    "customer_id": customer_id,
+                }
+                ask_for_email = True
+                print(f"[Email Service] Pending confirmation stored for {customer_id}. Waiting for email verification.")
 
         # Build a natural spoken response
         spoken = _build_spoken_response(
             action_type, risk_decision.decision, risk_decision.risk_score,
             risk_decision.explanation, amount
         )
+
+        # Append email prompt if needed
+        if ask_for_email:
+            spoken += (
+                " To receive a confirmation email, please type your registered email address "
+                "into the email field in the chat box below."
+            )
 
         results.append({
             "toolCallId": tool_call_id,

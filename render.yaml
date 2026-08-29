@@ -14,7 +14,9 @@ services:
         sync: false
       - key: LLM_MODEL
         value: mistral-small-latest
-      - key: RESEND_API_KEY
+      - key: MAILJET_API_KEY
+        sync: false
+      - key: MAILJET_SECRET_KEY
         sync: false
       - key: DEMO_CUSTOMER_EMAIL
         sync: false

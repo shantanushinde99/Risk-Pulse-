@@ -15,6 +15,7 @@ import {
   User,
   Zap,
   Cpu,
+  Mail,
 } from "lucide-react";
 
 interface TranscriptEntry {
@@ -44,6 +45,8 @@ export default function VoiceAgentPage() {
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [callDuration, setCallDuration] = useState(0);
   const [textInput, setTextInput] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "verified" | "mismatch">("idle");
 
   const vapiRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -66,6 +69,30 @@ export default function VoiceAgentPage() {
   useEffect(() => {
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/reset`, { method: "POST" }).catch(console.error);
   }, []);
+
+  // Sync auth email to backend whenever it changes (debounced)
+  useEffect(() => {
+    if (!authEmail) { setEmailStatus("idle"); return; }
+    setEmailStatus("idle");
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/set-auth-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: authEmail }),
+        });
+        const data = await res.json();
+        if (data.verified === true) {
+          setEmailStatus("verified");
+        } else if (data.verified === false) {
+          setEmailStatus("mismatch");
+        }
+      } catch (e) {
+        console.error("Failed to sync auth email", e);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [authEmail]);
 
   // Poll backend for latest evaluations while connected
   useEffect(() => {
@@ -511,7 +538,7 @@ export default function VoiceAgentPage() {
 
             {/* Chat Input */}
             {isConnected && (
-              <div className="p-4 border-t border-white/10 bg-black/20">
+              <div className="p-4 border-t border-white/10 bg-black/20 space-y-2">
                 <form onSubmit={sendTextMessage} className="flex gap-2">
                   <input
                     type="text"
@@ -527,6 +554,37 @@ export default function VoiceAgentPage() {
                     Send
                   </button>
                 </form>
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-slate-500" />
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="Enter your registered email for confirmation..."
+                    className={`flex-1 bg-white/5 border rounded-lg px-4 py-2 text-sm text-white focus:outline-none placeholder:text-slate-600 ${
+                      emailStatus === "verified"
+                        ? "border-emerald-500/50 focus:border-emerald-500/70"
+                        : emailStatus === "mismatch"
+                        ? "border-rose-500/50 focus:border-rose-500/70"
+                        : "border-white/10 focus:border-cyan-500/50"
+                    }`}
+                  />
+                  {emailStatus === "verified" && (
+                    <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-medium whitespace-nowrap">
+                      Verified & Sent
+                    </span>
+                  )}
+                  {emailStatus === "mismatch" && (
+                    <span className="text-[10px] uppercase tracking-wider text-rose-400 font-medium whitespace-nowrap">
+                      Mismatch
+                    </span>
+                  )}
+                  {emailStatus === "idle" && authEmail && (
+                    <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-medium whitespace-nowrap">
+                      Linked
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>

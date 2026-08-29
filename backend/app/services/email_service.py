@@ -1,15 +1,18 @@
 import os
-import resend
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# We get the API key from the environment
-resend.api_key = os.getenv("RESEND_API_KEY")
+MAILJET_API_KEY = os.getenv("MAILJET_API_KEY")
+MAILJET_SECRET_KEY = os.getenv("MAILJET_SECRET_KEY")
+
+# WARNING: This MUST match the email address you verified inside Mailjet!
+SENDER_EMAIL = "h17847896@gmail.com" 
 
 def send_confirmation_email(customer_email: str, action_type: str, amount: float):
-    if not resend.api_key or not customer_email:
-        print("[Email Service] Skipping email: API key missing or customer has no email on file.")
+    if not MAILJET_API_KEY or not MAILJET_SECRET_KEY or not customer_email:
+        print("[Email Service] Skipping email: MAILJET keys missing or customer has no email on file.")
         return
 
     # Map the action type to a friendly name
@@ -30,7 +33,7 @@ def send_confirmation_email(customer_email: str, action_type: str, amount: float
         </h2>
         <p style="color: #374151; font-size: 16px;">Hello,</p>
         <p style="color: #374151; font-size: 16px;">
-            This is an automated confirmation that your <strong>{action_label}</strong> was successfully processed by our AI Voice Agent after passing all security guardrails.
+            As per the request provided to our AI Voice Agent, we are writing to confirm that your <strong>{action_label}</strong> has been successfully processed after passing all required security guardrails.
         </p>
         <div style="background-color: #f3f4f6; padding: 15px; border-radius: 6px; margin: 20px 0;">
             <p style="margin: 0; color: #4b5563; font-size: 14px;">
@@ -46,13 +49,36 @@ def send_confirmation_email(customer_email: str, action_type: str, amount: float
     </div>
     """
     
+    url = "https://api.mailjet.com/v3.1/send"
+    
+    payload = {
+        "Messages": [
+            {
+                "From": {
+                    "Email": SENDER_EMAIL,
+                    "Name": "RiskPulse Alerts"
+                },
+                "To": [
+                    {
+                        "Email": customer_email
+                    }
+                ],
+                "Subject": f"RiskPulse: {action_label.title().replace('Of', 'of')} Successful",
+                "HTMLPart": html_content
+            }
+        ]
+    }
+
     try:
-        resend.Emails.send({
-            "from": "RiskPulse Alerts <onboarding@resend.dev>",
-            "to": [customer_email],
-            "subject": f"RiskPulse: {action_label.title().replace('Of', 'of')} Successful",
-            "html": html_content
-        })
-        print(f"[Email Service] Successfully sent confirmation email to {customer_email}")
+        response = requests.post(
+            url, 
+            auth=(MAILJET_API_KEY, MAILJET_SECRET_KEY), 
+            json=payload, 
+            timeout=10
+        )
+        if response.status_code == 200:
+            print(f"[Email Service] Successfully sent confirmation email via Mailjet to {customer_email}")
+        else:
+            print(f"[Email Service] Mailjet API Error: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"[Email Service] Failed to send email: {e}")
+        print(f"[Email Service] Failed to connect to Mailjet: {e}")
