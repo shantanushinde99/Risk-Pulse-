@@ -1,8 +1,9 @@
 import os
 import json
 import asyncio
-from dotenv import load_dotenv
 import time
+import sys
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
@@ -11,8 +12,16 @@ MOSS_PROJECT_KEY = os.getenv("MOSS_PROJECT_KEY") or os.getenv("MOSS_API_KEY")
 
 from moss import MossClient, DocumentInfo
 
+# Add parent to path so we can import our embedding service
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from app.services.embedding_service import get_embeddings_batch
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SYNTHETIC_DIR = os.path.join(BASE_DIR, "data", "synthetic")
+
+# Fallback: check inside backend/data/synthetic if the above doesn't exist
+if not os.path.exists(SYNTHETIC_DIR):
+    SYNTHETIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "synthetic")
 
 INDEX_NAME = "riskpulse-context"
 
@@ -61,7 +70,6 @@ async def ingest():
     # 3. Load Customer Events (Customer Timeline)
     with open(os.path.join(SYNTHETIC_DIR, "events.json"), "r") as f:
         events = json.load(f)
-        # Group events by customer to create timelines
         customer_events = {}
         for e in events:
             cid = e["customer_id"]
@@ -120,31 +128,44 @@ async def ingest():
 
     print(f"Prepared {len(documents)} documents for ingestion.")
 
-    print(f"Creating index '{INDEX_NAME}' and adding documents...")
+    # Step 1: Generate embeddings for all documents using Mistral
+    print("Generating embeddings via Mistral API (this may take a minute)...")
+    start_embed = time.time()
+    
+    texts_to_embed = []
+    for d in documents:
+        meta_str = " | ".join([f"{k}: {v}" for k, v in d.get("metadata", {}).items()])
+        text = f"[METADATA: {meta_str}]\n" + d["text"]
+        texts_to_embed.append(text)
+    
+    embeddings = get_embeddings_batch(texts_to_embed, batch_size=10)
+    embed_time = time.time() - start_embed
+    print(f"Generated {len(embeddings)} embeddings in {embed_time:.2f} seconds.")
+
+    # Step 2: Create DocumentInfo objects with custom embeddings
+    docs_to_ingest = []
+    for i, d in enumerate(documents):
+        meta_str = " | ".join([f"{k}: {v}" for k, v in d.get("metadata", {}).items()])
+        text = f"[METADATA: {meta_str}]\n" + d["text"]
+        docs_to_ingest.append(DocumentInfo(id=d["id"], text=text, embedding=embeddings[i]))
+
+    # Step 3: Create the index with model_id="custom"
+    print(f"Creating index '{INDEX_NAME}' with custom embeddings...")
     start_time = time.time()
     try:
-        # Note: If MossClient.create_index does not support 'metadata' dict in the list of dicts,
-        # we will handle it in the next step. Let's try with metadata first.
-        # Ensure we pass the list properly. Some versions might just want id and text.
-        
-        # Check if index exists or recreate it? The SDK might overwrite or append.
-        # For simplicity, we just call create_index which typically creates or replaces.
-        # Actually, let's just map to {"id": ..., "text": ...} if metadata fails, 
-        # but let's try with metadata included.
-        
-        # We will format the text to include metadata just in case metadata filtering isn't perfectly supported in the query later,
-        # semantic search will still catch it.
-        docs_to_ingest = []
-        for d in documents:
-            meta_str = " | ".join([f"{k}: {v}" for k, v in d.get("metadata", {}).items()])
-            text = f"[METADATA: {meta_str}]\n" + d["text"]
-            docs_to_ingest.append(DocumentInfo(id=d["id"], text=text))
-            
-        await client.create_index(INDEX_NAME, docs_to_ingest)
+        await client.create_index(INDEX_NAME, docs_to_ingest, model_id="custom")
         end_time = time.time()
         print(f"Successfully ingested {len(documents)} documents into '{INDEX_NAME}' in {end_time - start_time:.2f} seconds.")
     except Exception as e:
-        print(f"Failed to ingest documents: {e}")
+        if "already exists" in str(e).lower():
+            print(f"Index '{INDEX_NAME}' already exists. Deleting and re-creating...")
+            await client.delete_index(INDEX_NAME)
+            await asyncio.sleep(2)
+            await client.create_index(INDEX_NAME, docs_to_ingest, model_id="custom")
+            end_time = time.time()
+            print(f"Successfully re-ingested {len(documents)} documents into '{INDEX_NAME}' in {end_time - start_time:.2f} seconds.")
+        else:
+            print(f"Failed to ingest documents: {e}")
 
 if __name__ == "__main__":
     asyncio.run(ingest())

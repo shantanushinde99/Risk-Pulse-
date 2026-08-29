@@ -3,6 +3,7 @@ import time
 import asyncio
 from moss import MossClient, QueryOptions
 from dotenv import load_dotenv
+from app.services.embedding_service import get_embedding
 
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
 
@@ -20,7 +21,7 @@ def get_moss_client():
 
 async def search_context(query: str, top_k: int = 5, customer_id: str = None) -> tuple[list[dict], float]:
     """
-    Search Moss index for contextual documents.
+    Search Moss index for contextual documents using custom embeddings.
     Returns a tuple of (results, latency_ms)
     """
     start_time = time.perf_counter()
@@ -28,9 +29,17 @@ async def search_context(query: str, top_k: int = 5, customer_id: str = None) ->
     try:
         c = get_moss_client()
         
+        # Generate query embedding using Mistral
+        query_embedding = get_embedding(query)
+        
         async def do_search():
             await c.load_index(INDEX_NAME)
-            return await c.query(INDEX_NAME, query, QueryOptions(top_k=top_k))
+            # Pass the custom embedding vector to Moss query
+            return await c.query(
+                INDEX_NAME, 
+                query, 
+                QueryOptions(top_k=top_k, embedding=query_embedding)
+            )
             
         # Hard timeout of 8 seconds to ensure VAPI webhooks never fail
         results = await asyncio.wait_for(do_search(), timeout=8.0)
