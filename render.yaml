@@ -1,15 +1,9 @@
 services:
   - type: web
     name: riskpulse-backend
-    env: python
+    env: docker
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.0
-      - key: XDG_CACHE_HOME
-        value: /opt/render/project/.cache
       - key: MOSS_PROJECT_ID
         sync: false
       - key: MOSS_PROJECT_KEY
@@ -19,7 +13,7 @@ services:
       - key: LLM_API_KEY
         sync: false
       - key: LLM_MODEL
-        value: mistral-large-latest
+        value: mistral-small-latest
       - key: RESEND_API_KEY
         sync: false
       - key: DEMO_CUSTOMER_EMAIL

@@ -9,3 +9,4 @@ numpy
 faker
 requests
 resend
+fastembed==0.3.3

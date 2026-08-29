@@ -25,13 +25,14 @@ if response.status_code == 200:
     model_obj["tools"] = tools
     
     payload = {
-        "model": model_obj
+        "model": model_obj,
+        "serverUrl": "https://risk-pulse.onrender.com/api/vapi/webhook"
     }
     
-    print("Patching assistant to remove hardcoded tool URLs...")
+    print("Patching assistant to use Render URL...")
     patch_res = requests.patch(url, headers=headers, json=payload)
     if patch_res.status_code == 200:
-        print("Success! All tools will now use your global Render URL.")
+        print("Success! Assistant and all tools are now pointing to https://risk-pulse.onrender.com/api/vapi/webhook")
     else:
         print(patch_res.text)
 else:
