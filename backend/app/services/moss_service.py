@@ -9,7 +9,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file_
 
 MOSS_PROJECT_ID = os.getenv("MOSS_PROJECT_ID")
 MOSS_PROJECT_KEY = os.getenv("MOSS_PROJECT_KEY") or os.getenv("MOSS_API_KEY")
-INDEX_NAME = "riskpulse-context"
+INDEX_NAME = "riskpulse-custom-context"
 
 client = None
 

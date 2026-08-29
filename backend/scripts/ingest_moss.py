@@ -23,7 +23,7 @@ SYNTHETIC_DIR = os.path.join(BASE_DIR, "data", "synthetic")
 if not os.path.exists(SYNTHETIC_DIR):
     SYNTHETIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "synthetic")
 
-INDEX_NAME = "riskpulse-context"
+INDEX_NAME = "riskpulse-custom-context"
 
 async def ingest():
     if not MOSS_PROJECT_ID or not MOSS_PROJECT_KEY:
