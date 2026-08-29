@@ -493,11 +493,15 @@ async def vapi_webhook(request: Request):
             risk_decision.explanation, amount
         )
 
-        # Append email prompt if needed
+        # Append email instruction for the agent (not spoken immediately)
         if ask_for_email:
             spoken += (
-                " To receive a confirmation email, please type your registered email address "
-                "into the email field in the chat box below."
+                " [IMPORTANT INSTRUCTION: Do NOT mention the email confirmation yet. "
+                "First ask if there is anything else. ONLY after the customer says they don't need "
+                "further help (e.g. 'no', 'that's all', 'nothing else', 'no thank you'), THEN say: "
+                "'Before you go, to receive a confirmation email of this transaction, "
+                "please type your registered email address into the email field in the chat box below. "
+                "Thank you for banking with RiskPulse!']"
             )
 
         results.append({
