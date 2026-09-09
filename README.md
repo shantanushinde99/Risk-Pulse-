@@ -79,9 +79,9 @@ sequenceDiagram
     Note over RP,M: Retrieves Policies, History, Timelines
     RP->>RP: 4. Evaluate Risk Score
 
-    alt Risk Score > 80 (High Risk)
+    alt Risk Score >= 85 (High Risk)
         RP-->>V: 5a. Decision: BLOCK
-        V-->>U: "For your security, I cannot process this."
+        V-->>U: "For your security, I cannot process this transfer right now."
     else Risk Score < 20 (Safe)
         RP->>B: 5b. Decision: ALLOW (Execute API)
         B-->>RP: Success
@@ -96,6 +96,32 @@ sequenceDiagram
         end
     end
 ```
+
+### 🔍 Anatomy of a `BLOCK` Decision: Why Was the \$50,000 Transfer Blocked?
+
+In the sequence above, why did RiskPulse immediately block the **\$50,000 transfer to John** instead of blindly executing it? 
+
+Traditional rule engines either allow it (if the account's daily limit is \$50,000) or take 2+ seconds querying legacy databases. RiskPulse evaluated **Behavioral Baselines, Semantic History, and Institutional Policies in < 10ms**:
+
+| Evaluation Layer | Retrieved Signal & Context | Risk Impact |
+| :--- | :--- | :--- |
+| **1. Customer Baseline** | Customer profile indicates historical average transfer is **\$1,313** (lifetime max: \$2,000). Baseline risk score: `20`. | Baseline: **20** |
+| **2. Behavioral Velocity Anomaly** | The requested **\$50,000** transfer is **>38x higher than the customer's average**. Static rule engine flags an extreme velocity spike (>3x average). | **+30 pts** |
+| **3. Recipient Context** | "John" is flagged as a **`NEW` beneficiary** who has never received funds from this account before. | **+20 pts** |
+| **4. Moss Timeline Retrieval** | Moss retrieves recent chronological events from vector storage in < 8ms: **`NEW_DEVICE_LOGIN`** (unrecognized device) followed by **`PASSWORD_RESET`** and **`FAILED_OTP`** within the last 24 hours. | **+25 pts** |
+| **5. Historical Case Pattern Match** | Moss semantically matches the event pattern against the bank's universal fraud database (**`CASE_FRAUD_042: Account Takeover via Device Change`** — a bank-wide institutional precedent, not the user's personal record). | **+20 pts** |
+| **6. Security Policy Enforcement** | Moss retrieves and matches institutional security policies:<br>• **`POL_001` (Account Takeover High Risk):** *"When a password reset and login from an untrusted device occur shortly before a high-value financial action, automatic execution must be blocked."*<br>• **`POL_002` (New Beneficiary Limit):** *"Transfers to a new beneficiary exceeding standard average amounts must be flagged/blocked if accompanied by unusual device activity."* | **+15 pts** |
+
+#### 🧮 The Scoring Breakdown
+
+```text
+Final Risk Score = min(20 [Baseline] + 30 [Velocity] + 20 [New Payee] + 25 [Timeline] + 20 [Fraud Match] + 15 [Policy], 100)
+                 = 100 / 100
+```
+
+- **Threshold for `BLOCK`:** $\ge 85$
+- **Decision Engine Output:** `decision: "BLOCK"`, `confidence: 0.99`
+- **Result:** The Bank Execution API is never invoked. The AI Agent seamlessly informs the caller without dead air: *"For your security, I cannot process this transfer right now. Please visit your nearest branch with a valid photo ID."*
 
 ---
 
