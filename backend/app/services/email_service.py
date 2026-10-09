@@ -11,8 +11,14 @@ SENDER_EMAIL = os.getenv("MAILJET_SENDER_EMAIL")
 
 
 def send_confirmation_email(customer_email: str, action_type: str, amount: float) -> bool:
-    if not (MAILJET_API_KEY and MAILJET_SECRET_KEY and SENDER_EMAIL and customer_email):
-        print("[Email Service] Skipping email: Mailjet config missing or customer has no email on file.")
+    missing = [name for name, val in [
+        ("MAILJET_API_KEY", MAILJET_API_KEY),
+        ("MAILJET_SECRET_KEY", MAILJET_SECRET_KEY),
+        ("MAILJET_SENDER_EMAIL", SENDER_EMAIL),
+        ("customer email on file", customer_email),
+    ] if not val]
+    if missing:
+        print(f"[Email Service] Skipping email, missing: {', '.join(missing)}")
         return False
 
     # Map the action type to a friendly name
