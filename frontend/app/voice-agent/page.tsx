@@ -41,6 +41,57 @@ const errorMessage = (err: unknown, fallback: string) => {
   return e?.error?.message || e?.message || fallback;
 };
 
+interface FieldStatus {
+  state: "idle" | "ok" | "error";
+  message: string;
+}
+const IDLE: FieldStatus = { state: "idle", message: "" };
+
+function VerifyField({ icon, label, type, value, placeholder, status, disabled, onChange, onSubmit }: {
+  icon: React.ReactNode;
+  label: string;
+  type: "text" | "email";
+  value: string;
+  placeholder: string;
+  status: FieldStatus;
+  disabled?: boolean;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+}) {
+  const border = status.state === "ok" ? "border-emerald-500/50" : status.state === "error" ? "border-rose-500/50" : "border-white/10 focus:border-cyan-500/50";
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-1">
+      <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
+        {icon} {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          type={type}
+          value={value}
+          disabled={disabled}
+          autoComplete="off"
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          aria-label={label}
+          className={`flex-1 bg-white/5 border rounded-lg px-4 py-2 text-sm text-white focus:outline-none placeholder:text-slate-600 disabled:opacity-50 ${border}`}
+        />
+        <button
+          type="submit"
+          disabled={disabled || !value.trim()}
+          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+        >
+          Verify
+        </button>
+      </div>
+      {status.message && (
+        <p className={`text-xs ${status.state === "ok" ? "text-emerald-400" : "text-rose-400"}`}>
+          {status.state === "ok" ? "✓ " : "✗ "}{status.message}
+        </p>
+      )}
+    </form>
+  );
+}
+
 interface ToolCallEvent {
   toolName: string;
   args: Record<string, unknown>;
@@ -67,9 +118,10 @@ export default function VoiceAgentPage() {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [toolCalls, setToolCalls] = useState<ToolCallEvent[]>([]);
   const [callDuration, setCallDuration] = useState(0);
+  const [customerIdInput, setCustomerIdInput] = useState("");
+  const [idStatus, setIdStatus] = useState<FieldStatus>(IDLE);
   const [authEmail, setAuthEmail] = useState("");
-  const [emailStatus, setEmailStatus] = useState<"idle" | "verified" | "mismatch">("idle");
-  const [emailMessage, setEmailMessage] = useState("");
+  const [emailStatus, setEmailStatus] = useState<FieldStatus>(IDLE);
 
   const vapiRef = useRef<Vapi | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -121,28 +173,48 @@ export default function VoiceAgentPage() {
     toolCallEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [toolCalls]);
 
-  // Step-up verification: caller types the account's registered email
-  const submitEmail = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!authEmail.trim() || !callId) return;
-    setEmailStatus("idle");
+  // Typed verification. The backend decides; the agent only gets the backend's result text
+  // (never the raw typed input), so nothing typed here can steer the LLM.
+  const verify = useCallback(async (path: string, body: object): Promise<{ verified: boolean; message: string }> => {
     try {
-      const res = await fetch(`${API_URL}/api/agent/verify-email`, {
+      const res = await fetch(`${API_URL}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call_id: callId, email: authEmail }),
+        body: JSON.stringify({ call_id: callId, ...body }),
       });
       const data = await res.json();
-      setEmailStatus(data.verified ? "verified" : "mismatch");
-      setEmailMessage(data.message || "");
+      return { verified: !!data.verified, message: data.message || "Verification failed." };
     } catch (e) {
-      console.error("Failed to verify email", e);
-      setEmailStatus("mismatch");
-      setEmailMessage("Could not reach the server.");
+      console.error("Verification request failed", e);
+      return { verified: false, message: "Could not reach the server." };
     }
-  }, [authEmail, callId]);
+  }, [callId]);
 
-  // Poll this call's RiskPulse evaluations (keeps polling briefly after hang-up for the final ones)
+  const tellAgent = useCallback((content: string) => {
+    vapiRef.current?.send({ type: "add-message", message: { role: "system", content }, triggerResponseEnabled: true });
+  }, []);
+
+  const submitCustomerId = useCallback(async () => {
+    const data = await verify("/api/agent/verify-id", { customer_id: customerIdInput });
+    setIdStatus({ state: data.verified ? "ok" : "error", message: data.message });
+    tellAgent(
+      data.verified
+        ? `The caller typed their Customer ID and it was verified. Say: "${data.message}" Then continue with their original request by calling its tool again with the same details.`
+        : `The caller typed a Customer ID that could not be verified. Say exactly: "${data.message}"`
+    );
+  }, [customerIdInput, verify, tellAgent]);
+
+  const submitEmail = useCallback(async () => {
+    const data = await verify("/api/agent/verify-email", { email: authEmail });
+    setEmailStatus({ state: data.verified ? "ok" : "error", message: data.message });
+    tellAgent(
+      data.verified
+        ? "The caller's registered email was verified. Call the tool for their pending request again with the same details now."
+        : `The caller's registered email did not match. Tell them: "${data.message}"`
+    );
+  }, [authEmail, verify, tellAgent]);
+
+  // Poll this call's RiskPulse evaluations while it is live
   useEffect(() => {
     if (!callId) return;
     const poll = async () => {
@@ -163,9 +235,10 @@ export default function VoiceAgentPage() {
       }
     };
     poll();
+    if (!isConnected) return; // one final fetch after hang-up, then stop
     const pollInterval = setInterval(poll, 1000);
     return () => clearInterval(pollInterval);
-  }, [callId]);
+  }, [callId, isConnected]);
 
   // Call duration timer
   useEffect(() => {
@@ -186,9 +259,10 @@ export default function VoiceAgentPage() {
     setCallError("");
     setTranscript([]);
     setToolCalls([]);
-    setEmailStatus("idle");
-    setEmailMessage("");
+    setCustomerIdInput("");
+    setIdStatus(IDLE);
     setAuthEmail("");
+    setEmailStatus(IDLE);
     setMuted(false);
     setCallDuration(0);
     try {
@@ -471,36 +545,31 @@ export default function VoiceAgentPage() {
               <div ref={transcriptEndRef} />
             </div>
 
-            {/* Email Input */}
+            {/* Secure typed verification */}
             {isConnected && (
-              <div className="p-4 border-t border-white/10 bg-black/20 space-y-2">
-                <form onSubmit={submitEmail} className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-slate-500 shrink-0" />
-                  <input
-                    type="email"
-                    value={authEmail}
-                    onChange={(e) => { setAuthEmail(e.target.value); setEmailStatus("idle"); }}
-                    placeholder="When the agent asks, type your registered email..."
-                    className={`flex-1 bg-white/5 border rounded-lg px-4 py-2 text-sm text-white focus:outline-none placeholder:text-slate-600 ${
-                      emailStatus === "verified"
-                        ? "border-emerald-500/50 focus:border-emerald-500/70"
-                        : emailStatus === "mismatch"
-                        ? "border-rose-500/50 focus:border-rose-500/70"
-                        : "border-white/10 focus:border-cyan-500/50"
-                    }`}
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
-                  >
-                    Verify
-                  </button>
-                </form>
-                {emailMessage && (
-                  <p className={`text-xs pl-6 ${emailStatus === "verified" ? "text-emerald-400" : "text-rose-400"}`}>
-                    {emailStatus === "verified" ? "✓ " : "✗ "}{emailMessage}
-                  </p>
-                )}
+              <div className="p-4 border-t border-white/10 bg-black/20 space-y-3">
+                <VerifyField
+                  icon={<User className="w-3 h-3" />}
+                  label="Customer ID"
+                  type="text"
+                  value={customerIdInput}
+                  placeholder="e.g. C9876543210"
+                  status={idStatus}
+                  disabled={idStatus.state === "ok"}
+                  onChange={(v) => { setCustomerIdInput(v); setIdStatus(IDLE); }}
+                  onSubmit={submitCustomerId}
+                />
+                <VerifyField
+                  icon={<Mail className="w-3 h-3" />}
+                  label="Registered email (only when the agent asks)"
+                  type="email"
+                  value={authEmail}
+                  placeholder="name@example.com"
+                  status={emailStatus}
+                  disabled={idStatus.state !== "ok"}
+                  onChange={(v) => { setAuthEmail(v); setEmailStatus(IDLE); }}
+                  onSubmit={submitEmail}
+                />
               </div>
             )}
           </div>

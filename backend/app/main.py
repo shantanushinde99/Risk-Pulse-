@@ -172,6 +172,16 @@ def get_latest_agent_evaluations(call_id: Optional[str] = None):
     return {"evaluations": evals[-20:]}
 
 
+class VerifyIdRequest(BaseModel):
+    call_id: str = Field(min_length=1, max_length=128)
+    customer_id: str = Field(min_length=1, max_length=64)
+
+
+@app.post("/api/agent/verify-id")
+async def verify_id(req: VerifyIdRequest):
+    return await vapi_service.verify_customer_id(req.call_id, req.customer_id)
+
+
 class VerifyEmailRequest(BaseModel):
     call_id: str = Field(min_length=1, max_length=128)
     email: str = Field(min_length=3, max_length=254)

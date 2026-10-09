@@ -62,6 +62,12 @@ def run():
     summary = tool("c6", "get_account_summary")
     assert "active" in summary and "sh***@gmail.com" in summary and "2433" not in summary
 
+    # Typed Customer ID goes through the same checks as the spoken one
+    r = client.post("/api/agent/verify-id", json={"call_id": "c7", "customer_id": "FAKE123"}).json()
+    assert r["verified"] is False
+    r = client.post("/api/agent/verify-id", json={"call_id": "c7", "customer_id": " c9876543210 "}).json()
+    assert r["verified"] is True and vapi.sessions["c7"]["customer_id"] == "C9876543210"
+
     # Fake IDs are rejected and lock the call after 3 tries
     for _ in range(3):
         tool("c2", "verify_identity", customer_id="FAKE123")

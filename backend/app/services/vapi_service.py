@@ -122,7 +122,7 @@ async def _verify_identity(call_id: str, session: dict, args: dict) -> str:
         if session["locked"]:
             return ("I'm sorry, I wasn't able to verify your identity. For your security I can't continue on this call. "
                     f"Please visit your nearest branch with a valid photo ID. Your reference number is {_ref()}.")
-        return "I couldn't find an account with that Customer ID. Could you please repeat it, one character at a time?"
+        return "I couldn't find an account with that Customer ID. Please check it and enter it again in the Customer ID box on your screen."
 
     action = AgentAction(action_id=f"VAPI_{_ref()}", customer_id=customer_id, action_type="VERIFY_IDENTITY")
     decision, embed_ms, moss_ms, eval_ms = await _guardrail(
@@ -153,7 +153,7 @@ def _account_summary(call_id: str, session: dict) -> str:
     """Read-only account facts for a verified caller; never exposes risk data."""
     if not session["customer_id"]:
         _record(call_id, "get_account_summary", {}, "VERIFY", "Caller not identified. Customer ID required before sharing account details.")
-        return "I can check that for you. First, I need to verify your identity. Could you please tell me your Customer ID?"
+        return "I can check that for you. First, I need to verify your identity. Please type your Customer ID into the Customer ID box on your screen, or read it out to me."
 
     customer = load_customer(session["customer_id"])
     _record(call_id, "get_account_summary", {}, "ALLOW", f"Read-only account summary shared with verified customer {customer.customer_id}.")
@@ -188,7 +188,7 @@ async def handle_tool_call(call_id: str, tool: str, args: dict) -> str:
     # Secure by default: nothing runs for an unidentified caller
     if not session["customer_id"]:
         _record(call_id, tool, args, "VERIFY", "Caller not identified. Customer ID required before any action.")
-        return f"I can help with the {label}. First, I need to verify your identity. Could you please tell me your Customer ID?"
+        return f"I can help with the {label}. First, I need to verify your identity. Please type your Customer ID into the Customer ID box on your screen, or read it out to me."
 
     customer = load_customer(session["customer_id"])
     amount = _to_amount(args.get(amount_arg)) if amount_arg else None
@@ -229,7 +229,7 @@ async def handle_tool_call(call_id: str, tool: str, args: dict) -> str:
             return (f"This {label} needs additional verification, and there's no email on file for your account. "
                     f"Please visit your nearest branch to complete it. Your reference number is {ref}.")
         return (f"For your security, this {label} needs one more check. Please type your registered email address "
-                f"into the verification box on your screen, then tell me once you've done it.")
+                f"into the Registered email box on your screen.")
 
     if customer.email:
         task = asyncio.create_task(asyncio.to_thread(send_confirmation_email, customer.email, action_type, amount))
@@ -238,6 +238,13 @@ async def handle_tool_call(call_id: str, tool: str, args: dict) -> str:
     amt_text = f" of {int(amount):,} rupees" if amount else ""
     return (f"Done. Your {label}{amt_text} has been processed successfully, and a confirmation has been sent to your email. "
             f"Your confirmation number is {ref}. Is there anything else I can help you with?")
+
+
+async def verify_customer_id(call_id: str, customer_id: str) -> dict:
+    """Typed Customer ID from the web UI; same checks, attempt limits and lock-out as the voice tool."""
+    message = await handle_tool_call(call_id, "verify_identity", {"customer_id": customer_id})
+    session = get_session(call_id)
+    return {"verified": bool(session["customer_id"]), "locked": session["locked"], "message": message}
 
 
 def verify_email(call_id: str, email: str) -> dict:
@@ -254,7 +261,7 @@ def verify_email(call_id: str, email: str) -> dict:
     if registered and email.strip().lower() == registered:
         session["email_verified"] = True
         session["email_attempts"] = 0
-        return {"verified": True, "message": "Email verified. Tell the agent you're done."}
+        return {"verified": True, "message": "Email verified."}
 
     session["email_attempts"] += 1
     left = MAX_ATTEMPTS - session["email_attempts"]
