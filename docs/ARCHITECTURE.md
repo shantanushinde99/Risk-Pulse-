@@ -10,7 +10,7 @@ RiskPulse follows a modern, decoupled architecture designed for extreme speed (s
 - **Role:** Security Operations Dashboard & Threat Vector Simulator.
 - **Responsibilities:**
   - **Threat Simulator:** Allows security teams to inject synthetic telemetry (Nominal, Anomalous, ATO) directly into the Risk Engine via the `/api/scenarios/{id}/run` endpoint.
-  - **Voice UI:** Integrates the VAPI Web SDK for real-time microphone interactions with the AI assistant.
+  - **Voice UI:** Integrates the VAPI Web SDK for real-time microphone interactions, shows the call's RiskPulse evaluations, and hosts the email step-up box.
   - **Visualizations:** Renders live latency metrics (Moss vs. Risk Logic) and the final Risk Score (0-100) using Framer Motion animations.
 
 ### Backend (FastAPI)
@@ -19,7 +19,8 @@ RiskPulse follows a modern, decoupled architecture designed for extreme speed (s
   - **VAPI Webhooks:** Exposes `/api/vapi/webhook` to catch high-risk tool calls (`transfer_money`, etc.) before they reach execution.
   - **Semantic Retrieval (`moss_service.py`):** Queries Moss using the requested action and strictly enforces Context Leakage Prevention via `customer_id` filters.
   - **Hybrid Risk Engine (`risk_engine.py`):** Computes a deterministic Risk Score combining static thresholds (e.g., amount > 10,000) and semantic insights (e.g., historical ATO cases).
-  - **Email Triggers (`email_service.py`):** Fires confirmation receipts via Resend when a transaction is `ALLOW`ed.
+  - **Call Sessions (`vapi_service.py`):** Tracks per-call identity (`call.id`), failed attempts and the one-shot email step-up.
+  - **Email Triggers (`email_service.py`):** Sends confirmation receipts via Mailjet when an action is `ALLOW`ed.
 
 ### Vector Database (Moss)
 - **Role:** Contextual Knowledge Retrieval (Zero-Latency Guardrail).
@@ -29,7 +30,7 @@ RiskPulse follows a modern, decoupled architecture designed for extreme speed (s
 
 ### Third-Party Services
 - **VAPI:** Conversational Voice AI layer. Handles WebRTC, speech-to-text, LLM routing, and structured tool calling.
-- **Resend:** Transactional email API for alerting the customer upon successful tool execution.
+- **Mailjet:** Transactional email API for confirming successful actions to the customer.
 
 ---
 
@@ -37,25 +38,20 @@ RiskPulse follows a modern, decoupled architecture designed for extreme speed (s
 
 ### Context Leakage Prevention (Metadata Filtering)
 Vector databases inherently perform *global* semantic searches. Without filtering, a query like "Is this transfer safe?" might retrieve a fraud case from *another* customer, unfairly penalizing the current user.
-**The Fix:** RiskPulse intercepts the `customer_id` from the VAPI tool call and passes it as a strict metadata filter into Moss. 
-```python
-results = await client.query(
-    INDEX_NAME, 
-    search_query, 
-    limit=3, 
-    filters={"customer_id": customer_id} # PREVENTS LEAKAGE
-)
-```
+**The Fix:** The verified `customer_id` comes from the call session (never from the caller's tool arguments). Semantic results are over-fetched and any `customer_timeline` document whose `customer_id` metadata does not exactly equal the caller's is dropped; the caller's own timeline is fetched by ID (`TIMELINE_<customer_id>`) from an in-process cache, so it is always present.
 
 ### The Hybrid Risk Engine (0-100 Score)
 We do not rely solely on an LLM or solely on hardcoded rules. We use a hybrid, deterministic scoring system:
-1. **Base Score (0):** Every transaction starts at 0.
-2. **Rule-Based Penalties:** `if amount > 3x average: +25 score`.
-3. **Semantic Penalties:** If Moss retrieves a past `Account Takeover` case matching the current timeline context: `+50 score`.
-4. **Decision:** 
+1. **Base Score:** The customer's baseline risk.
+2. **Rule-Based Penalties:** e.g. amount > 3x average `+30`, new beneficiary `+20`, per-action penalties (account changes, PIN reset, closure…).
+3. **Timeline Penalties:** new device login `+20`, password reset `+25`, failed OTP `+20`, suspicious location change `+15`.
+4. **Semantic Penalties:** matching account-takeover case `+20` and violated blocking policy `+15` (only when the score is already elevated). Each signal counts once.
+5. **Fail-safe:** if retrieval fails, `+30` so the action cannot pass silently.
+6. **Decision:**
    - `>= 85`: **BLOCK**
-   - `>= 60`: **VERIFY (OTP)**
-   - `< 60`: **ALLOW**
+   - `60-84`: **ESCALATE** (human agent)
+   - `30-59`: **VERIFY** (email step-up)
+   - `< 30`: **ALLOW**
 
 ---
 
@@ -70,7 +66,7 @@ sequenceDiagram
     participant VAPI as VAPI Voice AI
     participant FastAPI as RiskPulse Webhook
     participant Moss as Moss Vector DB
-    participant Resend as Email API
+    participant Mail as Mailjet
 
     User->>VAPI: "Transfer $15,000 to John."
     VAPI->>FastAPI: POST /api/vapi/webhook (ToolCall: transfer_money)
@@ -83,8 +79,8 @@ sequenceDiagram
     alt Score >= 85
         FastAPI-->>VAPI: Return BLOCK response
         VAPI-->>User: "For your security, I cannot process this transfer right now."
-    else Score < 60
-        FastAPI->>Resend: Trigger Confirmation Email
+    else Score < 30
+        FastAPI->>Mail: Trigger Confirmation Email
         FastAPI-->>VAPI: Return ALLOW response
         VAPI-->>User: "Your transfer has been processed successfully!"
     end
@@ -112,8 +108,9 @@ sequenceDiagram
 ## ⏱️ 4. Latency Measurement Methodology
 
 We use Python's `time.perf_counter()` to measure the precise execution time of the guardrail:
-- **Moss Search Latency:** Time taken purely for `client.query()` execution against the Rust/WASM engine.
-- **Risk Logic Latency:** Time taken by the deterministic Python risk evaluation loop (regex, JSON parsing, arithmetic).
-- **Total Guardrail Latency:** Moss Latency + Risk Logic Latency.
+- **Embedding Latency:** The Mistral API call that embeds the query (a network round-trip, typically 300-600ms).
+- **Moss Search Latency:** Time for `client.query()` against the locally loaded index plus the cached timeline lookup (~1ms).
+- **Risk Logic Latency:** The deterministic Python evaluation.
+- **Total Guardrail Latency:** Wall-clock time for all of the above.
 
-By ensuring the Total Guardrail Latency remains under 20ms, we guarantee that the security interception happens so quickly that the VAPI Voice Agent does not pause, maintaining perfect conversational fluidity.
+The Moss and risk-engine portion stays well under 10ms; the embedding call dominates and is reported separately rather than hidden.

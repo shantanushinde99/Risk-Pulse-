@@ -18,5 +18,7 @@ services:
         sync: false
       - key: MAILJET_SECRET_KEY
         sync: false
-      - key: DEMO_CUSTOMER_EMAIL
+      - key: MAILJET_SENDER_EMAIL
+        sync: false
+      - key: VAPI_WEBHOOK_SECRET
         sync: false

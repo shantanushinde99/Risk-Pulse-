@@ -2,22 +2,27 @@ import os
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"))
 
 MAILJET_API_KEY = os.getenv("MAILJET_API_KEY")
 MAILJET_SECRET_KEY = os.getenv("MAILJET_SECRET_KEY")
+# Must be a sender address verified inside Mailjet
+SENDER_EMAIL = os.getenv("MAILJET_SENDER_EMAIL")
 
-# WARNING: This MUST match the email address you verified inside Mailjet!
-SENDER_EMAIL = "h17847896@gmail.com" 
 
-def send_confirmation_email(customer_email: str, action_type: str, amount: float):
-    if not MAILJET_API_KEY or not MAILJET_SECRET_KEY or not customer_email:
-        print("[Email Service] Skipping email: MAILJET keys missing or customer has no email on file.")
-        return
+def send_confirmation_email(customer_email: str, action_type: str, amount: float) -> bool:
+    if not (MAILJET_API_KEY and MAILJET_SECRET_KEY and SENDER_EMAIL and customer_email):
+        print("[Email Service] Skipping email: Mailjet config missing or customer has no email on file.")
+        return False
 
     # Map the action type to a friendly name
     labels = {
-        "TRANSFER_MONEY": f"transfer of ₹{amount:,.2f}",
+        "TRANSFER_MONEY": f"transfer of ₹{amount or 0:,.2f}",
+        "PROCESS_REFUND": f"refund of ₹{amount or 0:,.2f}",
+        "INCREASE_CREDIT_LIMIT": "credit limit increase",
+        "ENABLE_INTL_TXN": "international transactions enablement",
+        "CLOSE_ACCOUNT": "account closure request",
+        "WITHDRAW_FD": f"fixed deposit withdrawal of ₹{amount or 0:,.2f}",
         "CHANGE_PHONE": "phone number update",
         "CHANGE_EMAIL": "email address update",
         "ADD_BENEFICIARY": "new beneficiary addition",
@@ -63,7 +68,7 @@ def send_confirmation_email(customer_email: str, action_type: str, amount: float
                         "Email": customer_email
                     }
                 ],
-                "Subject": f"RiskPulse: {action_label.title().replace('Of', 'of')} Successful",
+                "Subject": f"RiskPulse: Your {action_label} was processed",
                 "HTMLPart": html_content
             }
         ]
@@ -77,8 +82,9 @@ def send_confirmation_email(customer_email: str, action_type: str, amount: float
             timeout=10
         )
         if response.status_code == 200:
-            print(f"[Email Service] Successfully sent confirmation email via Mailjet to {customer_email}")
-        else:
-            print(f"[Email Service] Mailjet API Error: {response.status_code} - {response.text}")
+            print(f"[Email Service] Sent confirmation email via Mailjet to {customer_email}")
+            return True
+        print(f"[Email Service] Mailjet API Error: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"[Email Service] Failed to connect to Mailjet: {e}")
+    return False

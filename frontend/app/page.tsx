@@ -1,13 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { Shield, ShieldAlert, ShieldCheck, Activity, Cpu, Server, Clock, ChevronRight, AlertTriangle, UserCheck, Zap } from "lucide-react";
+import { Shield, ShieldAlert, ShieldCheck, Activity, Server, Clock, AlertTriangle, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+interface RiskSignal { name: string; impact: number }
+interface ContextItem { type: string; relevance: string; content: string }
+interface ScenarioResult {
+  detail?: string | object;
+  customer_request: string;
+  action: { action_type: string; amount: number | null; status: string };
+  embedding_latency_ms: number;
+  moss_latency_ms: number;
+  risk_evaluation_latency_ms: number;
+  total_guardrail_latency_ms: number;
+  llm_latency_ms: number;
+  decision: { risk_score: number; decision: string; explanation: string; signals: RiskSignal[]; retrieved_context: ContextItem[] };
+  final_response: string;
+}
+
 export default function Home() {
-  const [activeScenario, setActiveScenario] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<ScenarioResult | null>(null);
 
   // Sandbox State
   const [actionType, setActionType] = useState("TRANSFER_MONEY");
@@ -19,7 +33,6 @@ export default function Home() {
   const showBeneficiary = actionType === "TRANSFER_MONEY" || actionType === "ADD_BENEFICIARY";
 
   const runCustomScenario = async () => {
-    setActiveScenario("custom");
     setLoading(true);
     setData(null);
     try {
@@ -28,8 +41,8 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action_type: actionType,
-          amount: amount,
-          beneficiary_status: beneficiary,
+          amount: showAmount ? amount : 0,
+          beneficiary_status: showBeneficiary ? beneficiary : null,
           baseline_risk: baselineRisk
         })
       });
@@ -42,7 +55,6 @@ export default function Home() {
   };
 
   const runScenario = async (scenarioId: string) => {
-    setActiveScenario(scenarioId);
     setLoading(true);
     setData(null);
     try {
@@ -135,7 +147,7 @@ export default function Home() {
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider flex justify-between">
                   <span>Transaction Amount</span>
-                  <span className="text-emerald-400">${amount.toLocaleString()}</span>
+                  <span className="text-emerald-400">₹{amount.toLocaleString()}</span>
                 </label>
                 <input 
                   type="range" 
@@ -168,7 +180,7 @@ export default function Home() {
               </label>
               <input 
                 type="range" 
-                min="1" max="100" step="1"
+                min="0" max="100" step="1"
                 value={baselineRisk}
                 onChange={(e) => setBaselineRisk(Number(e.target.value))}
                 className="w-full accent-emerald-500"
@@ -273,7 +285,7 @@ export default function Home() {
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</span>
                       <div className="bg-[#1C1C1F] p-3 rounded-lg rounded-tl-none border border-white/5 text-sm">
-                        "{data.customer_request}"
+                        &ldquo;{data.customer_request}&rdquo;
                       </div>
                     </div>
 
@@ -282,7 +294,7 @@ export default function Home() {
                       <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Agent Proposed Action</span>
                       <div className="bg-blue-500/5 border border-blue-500/20 p-3 rounded-lg text-xs font-mono text-blue-300">
                         <div className="flex justify-between mb-1"><span className="text-blue-500">ACTION:</span> <span>{data.action.action_type}</span></div>
-                        <div className="flex justify-between mb-1"><span className="text-blue-500">AMOUNT:</span> <span>₹{data.action.amount}</span></div>
+                        <div className="flex justify-between mb-1"><span className="text-blue-500">AMOUNT:</span> <span>{data.action.amount != null ? `₹${data.action.amount.toLocaleString()}` : "—"}</span></div>
                         <div className="flex justify-between"><span className="text-blue-500">STATUS:</span> <span className="text-amber-400">{data.action.status}</span></div>
                       </div>
                     </div>
@@ -366,7 +378,7 @@ export default function Home() {
                     <div className="w-full mt-2">
                       <p className="text-xs font-semibold text-slate-500 uppercase mb-3">Key Signals</p>
                       <div className="flex flex-col gap-2">
-                        {data.decision.signals.map((s: any, i: number) => (
+                        {data.decision.signals.map((s, i) => (
                           <div key={i} className="flex justify-between items-center bg-white/5 rounded px-3 py-2 text-xs">
                             <span className="text-slate-300">{s.name}</span>
                             <span className={s.impact > 0 ? "text-rose-400 font-mono" : "text-emerald-400 font-mono"}>+{s.impact}</span>
@@ -411,7 +423,7 @@ export default function Home() {
                       {data.decision.retrieved_context.length} relevant context items found
                     </p>
                     
-                    {data.decision.retrieved_context.map((ctx: any, i: number) => (
+                    {data.decision.retrieved_context.map((ctx, i) => (
                       <div key={i} className="bg-[#1A1A1D] border border-white/5 rounded-lg p-3 hover:border-purple-500/30 transition-colors">
                         <div className="flex justify-between items-start mb-2">
                           <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider px-2 py-0.5 bg-purple-500/10 rounded">
@@ -448,7 +460,14 @@ export default function Home() {
               <h3 className="font-semibold text-slate-200">Execution Performance</h3>
             </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+              <div className="bg-[#1A1A1D] p-4 rounded-lg border border-white/5">
+                <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Query Embedding</p>
+                <p className="text-xl font-mono text-amber-300">
+                  {data.embedding_latency_ms} <span className="text-sm text-amber-300/50">ms</span>
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1">Mistral API</p>
+              </div>
               <div className="bg-[#1A1A1D] p-4 rounded-lg border border-white/5">
                 <p className="text-xs text-slate-500 uppercase tracking-widest mb-1">Moss Search</p>
                 <p className="text-xl font-mono text-emerald-400">

@@ -10,7 +10,7 @@ import uuid
 NUMBER_OF_CUSTOMERS = 100
 NUMBER_OF_EVENTS = 500
 RANDOM_SEED = 42
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/
 PAYSIM_PATH = os.path.join(BASE_DIR, "data", "raw", "paysim.csv")
 OUTPUT_DIR = os.path.join(BASE_DIR, "data", "synthetic")
 

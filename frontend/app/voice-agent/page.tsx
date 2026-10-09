@@ -17,44 +17,100 @@ import {
   Cpu,
   Mail,
 } from "lucide-react";
+import Vapi from "@vapi-ai/web";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const VAPI_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY || "";
+const VAPI_ASSISTANT_ID = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID || "";
 
 interface TranscriptEntry {
-  role: "assistant" | "user" | "system";
+  role: "assistant" | "user";
   text: string;
   timestamp: Date;
 }
 
+interface VapiMessage {
+  type?: string;
+  role?: string;
+  transcriptType?: string;
+  transcript?: string;
+}
+
+const errorMessage = (err: unknown, fallback: string) => {
+  const e = err as { error?: { message?: string }; message?: string } | undefined;
+  return e?.error?.message || e?.message || fallback;
+};
+
 interface ToolCallEvent {
   toolName: string;
   args: Record<string, unknown>;
-  result?: string;
   decision?: string;
-  score?: number;
+  score?: number | null;
   explanation?: string;
+  embed_ms?: number;
   moss_ms?: number;
   eval_ms?: number;
   timestamp: Date;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Main Page
+// ─────────────────────────────────────────────────────────────
 export default function VoiceAgentPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const [callError, setCallError] = useState("");
+  const [assistantSpeaking, setAssistantSpeaking] = useState(false);
+  const [volume, setVolume] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const [callId, setCallId] = useState("");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [toolCalls, setToolCalls] = useState<ToolCallEvent[]>([]);
-  const [volumeLevel, setVolumeLevel] = useState(0);
   const [callDuration, setCallDuration] = useState(0);
-  const [textInput, setTextInput] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [emailStatus, setEmailStatus] = useState<"idle" | "verified" | "mismatch">("idle");
+  const [emailMessage, setEmailMessage] = useState("");
 
-  const vapiRef = useRef<any>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const vapiRef = useRef<Vapi | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const toolCallEndRef = useRef<HTMLDivElement>(null);
 
-  const VAPI_PUBLIC_KEY = "7126f1a4-bbb8-47b9-8264-252c6d21f175";
-  const ASSISTANT_ID = "e6f879b5-b9e5-403a-831a-64500dda7057";
+  // Create the VAPI client once and wire its events
+  useEffect(() => {
+    if (!VAPI_PUBLIC_KEY) return;
+    const vapi = new Vapi(VAPI_PUBLIC_KEY);
+    vapiRef.current = vapi;
+
+    vapi.on("call-start", () => {
+      setIsConnected(true);
+      setIsConnecting(false);
+    });
+    vapi.on("call-end", () => {
+      setIsConnected(false);
+      setIsConnecting(false);
+      setAssistantSpeaking(false);
+      setVolume(0);
+    });
+    vapi.on("speech-start", () => setAssistantSpeaking(true));
+    vapi.on("speech-end", () => setAssistantSpeaking(false));
+    vapi.on("volume-level", (v: number) => setVolume(v));
+    vapi.on("message", (msg: VapiMessage) => {
+      if (msg?.type === "transcript" && msg.transcriptType === "final" && msg.transcript?.trim()) {
+        setTranscript((prev) => [...prev, { role: msg.role === "user" ? "user" : "assistant", text: msg.transcript!, timestamp: new Date() }]);
+      }
+    });
+    vapi.on("error", (err: unknown) => {
+      console.error("VAPI error", err);
+      setCallError(errorMessage(err, "Voice call failed. Check the VAPI keys and try again."));
+      setIsConnecting(false);
+    });
+
+    return () => {
+      vapi.stop();
+      vapi.removeAllListeners();
+      vapiRef.current = null;
+    };
+  }, []);
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -65,230 +121,97 @@ export default function VoiceAgentPage() {
     toolCallEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [toolCalls]);
 
-  // Reset backend state on mount so it's fresh for every new viewer
-  useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/reset`, { method: "POST" }).catch(console.error);
-  }, []);
-
-  // Send auth email to backend for verification when user clicks Send
+  // Step-up verification: caller types the account's registered email
   const submitEmail = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authEmail.trim()) return;
+    if (!authEmail.trim() || !callId) return;
     setEmailStatus("idle");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/set-auth-email`, {
+      const res = await fetch(`${API_URL}/api/agent/verify-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: authEmail }),
+        body: JSON.stringify({ call_id: callId, email: authEmail }),
       });
       const data = await res.json();
-      if (data.verified === true) {
-        setEmailStatus("verified");
-      } else if (data.verified === false) {
-        setEmailStatus("mismatch");
-      }
+      setEmailStatus(data.verified ? "verified" : "mismatch");
+      setEmailMessage(data.message || "");
     } catch (e) {
-      console.error("Failed to verify auth email", e);
+      console.error("Failed to verify email", e);
+      setEmailStatus("mismatch");
+      setEmailMessage("Could not reach the server.");
     }
-  }, [authEmail]);
+  }, [authEmail, callId]);
 
-  // Poll backend for latest evaluations while connected
+  // Poll this call's RiskPulse evaluations (keeps polling briefly after hang-up for the final ones)
   useEffect(() => {
-    let pollInterval: NodeJS.Timeout;
-    if (isConnected) {
-      pollInterval = setInterval(async () => {
-        try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/vapi/latest-evaluations`);
-          const data = await res.json();
-          if (data.evaluations && data.evaluations.length > 0) {
-            const newCalls = data.evaluations.map((ev: any) => ({
-              toolName: ev.toolName,
-              args: ev.args,
-              result: ev.result,
-              decision: ev.decision,
-              explanation: ev.explanation,
-              score: ev.score,
-              moss_ms: ev.moss_ms,
-              eval_ms: ev.eval_ms,
-              timestamp: new Date(ev.timestamp)
-            }));
-            setToolCalls((prev) => {
-              // Compare stringified data to avoid unnecessary re-renders
-              // but always update when backend has new decisions/explanations
-              const prevKey = prev.map(p => `${p.toolName}|${p.decision}`).join(",");
-              const newKey = newCalls.map((n: any) => `${n.toolName}|${n.decision}`).join(",");
-              if (prevKey === newKey && prev.length === newCalls.length) return prev;
-              return newCalls;
-            });
-          }
-        } catch (e) {
-          console.error("Failed to fetch evaluations", e);
-        }
-      }, 1000);
-    }
+    if (!callId) return;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/agent/latest-evaluations?call_id=${encodeURIComponent(callId)}`);
+        const data = await res.json();
+        const evals: ToolCallEvent[] = (data.evaluations || []).map((ev: Omit<ToolCallEvent, "timestamp"> & { timestamp: string }) => ({
+          ...ev,
+          timestamp: new Date(ev.timestamp),
+        }));
+        setToolCalls((prev) =>
+          prev.length === evals.length && prev.every((p, i) => p.timestamp.getTime() === evals[i].timestamp.getTime())
+            ? prev
+            : evals
+        );
+      } catch (e) {
+        console.error("Failed to fetch evaluations", e);
+      }
+    };
+    poll();
+    const pollInterval = setInterval(poll, 1000);
     return () => clearInterval(pollInterval);
-  }, [isConnected]);
+  }, [callId]);
 
   // Call duration timer
   useEffect(() => {
-    if (isConnected) {
-      timerRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setCallDuration(0);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    if (!isConnected) return;
+    const timer = setInterval(() => setCallDuration((prev) => prev + 1), 1000);
+    return () => clearInterval(timer);
   }, [isConnected]);
 
   const formatDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, "0");
+    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
     const s = (seconds % 60).toString().padStart(2, "0");
     return `${m}:${s}`;
   };
 
-  const sendTextMessage = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (!textInput.trim() || !vapiRef.current) return;
-
-    vapiRef.current.send({
-      type: "add-message",
-      message: {
-        role: "user",
-        content: textInput
-      }
-    });
-    setTextInput("");
-  }, [textInput]);
-
   const startCall = useCallback(async () => {
+    if (!vapiRef.current) return;
     setIsConnecting(true);
+    setCallError("");
     setTranscript([]);
     setToolCalls([]);
-
+    setEmailStatus("idle");
+    setEmailMessage("");
+    setAuthEmail("");
+    setMuted(false);
+    setCallDuration(0);
     try {
-      const Vapi = (await import("@vapi-ai/web")).default;
-      const vapi = new Vapi(VAPI_PUBLIC_KEY);
-      vapiRef.current = vapi;
-
-      vapi.on("call-start", () => {
-        setIsConnected(true);
-        setIsConnecting(false);
-        setTranscript((prev) => [
-          ...prev,
-          {
-            role: "system",
-            text: "Call connected to RiskPulse Voice Agent",
-            timestamp: new Date(),
-          },
-        ]);
-      });
-
-      vapi.on("call-end", () => {
-        setIsConnected(false);
-        setIsConnecting(false);
-        setTranscript((prev) => [
-          ...prev,
-          {
-            role: "system",
-            text: "Call ended",
-            timestamp: new Date(),
-          },
-        ]);
-        vapiRef.current = null;
-      });
-
-      vapi.on("message", (msg: any) => {
-        // Handle transcript messages
-        if (msg.type === "transcript" && msg.transcriptType === "final") {
-          setTranscript((prev) => [
-            ...prev,
-            {
-              role: msg.role === "assistant" ? "assistant" : "user",
-              text: msg.transcript,
-              timestamp: new Date(),
-            },
-          ]);
-        }
-
-        // Handle tool calls
-        if (msg.type === "tool-calls") {
-          for (const tc of msg.toolCalls || []) {
-            const fn = tc.function || {};
-            setToolCalls((prev) => [
-              ...prev,
-              {
-                toolName: fn.name || "unknown",
-                args: fn.arguments || {},
-                timestamp: new Date(),
-              },
-            ]);
-          }
-        }
-
-        // Handle tool call results
-        if (msg.type === "tool-calls-result") {
-          for (const result of msg.toolCallResult || []) {
-            setToolCalls((prev) => {
-              const updated = [...prev];
-              // Find the last tool call without a result and update it
-              for (let i = updated.length - 1; i >= 0; i--) {
-                if (!updated[i].result) {
-                  updated[i] = { ...updated[i], result: result.result };
-                  break;
-                }
-              }
-              return updated;
-            });
-          }
-        }
-      });
-
-      vapi.on("volume-level", (level: number) => {
-        setVolumeLevel(level);
-      });
-
-      vapi.on("error", (err: any) => {
-        console.error("VAPI Error:", err);
-        setIsConnecting(false);
-        setTranscript((prev) => [
-          ...prev,
-          {
-            role: "system",
-            text: `Error: ${err?.message || "Connection failed"}`,
-            timestamp: new Date(),
-          },
-        ]);
-      });
-
-      await vapi.start(ASSISTANT_ID);
+      const call = await vapiRef.current.start(VAPI_ASSISTANT_ID);
+      if (!call?.id) throw new Error("VAPI did not return a call");
+      setCallId(call.id);
     } catch (err) {
       console.error("Failed to start call:", err);
+      setCallError(errorMessage(err, "Failed to start the call."));
       setIsConnecting(false);
     }
   }, []);
 
   const endCall = useCallback(() => {
-    if (vapiRef.current) {
-      vapiRef.current.stop();
-      vapiRef.current = null;
-    }
-    setIsConnected(false);
-    setIsConnecting(false);
+    vapiRef.current?.stop();
   }, []);
 
   const toggleMute = useCallback(() => {
-    if (vapiRef.current) {
-      const newMuted = !isMuted;
-      vapiRef.current.setMuted(newMuted);
-      setIsMuted(newMuted);
-    }
-  }, [isMuted]);
+    if (!vapiRef.current) return;
+    const next = !vapiRef.current.isMuted();
+    vapiRef.current.setMuted(next);
+    setMuted(next);
+  }, []);
 
   const getToolColor = (toolName: string) => {
     const riskTools = [
@@ -404,7 +327,9 @@ export default function VoiceAgentPage() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={startCall}
-                className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-2xl shadow-emerald-500/30 cursor-pointer transition-all hover:shadow-emerald-500/50"
+                disabled={!VAPI_PUBLIC_KEY || !VAPI_ASSISTANT_ID}
+                aria-label="Start call"
+                className="disabled:opacity-40 disabled:cursor-not-allowed w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-2xl shadow-emerald-500/30 cursor-pointer transition-all hover:shadow-emerald-500/50"
               >
                 <Phone className="w-10 h-10 text-white" />
               </motion.button>
@@ -422,33 +347,22 @@ export default function VoiceAgentPage() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={toggleMute}
-                  className={`w-14 h-14 rounded-full flex items-center justify-center cursor-pointer transition-all ${
-                    isMuted
-                      ? "bg-amber-500/20 border border-amber-500/30"
-                      : "bg-white/10 border border-white/20 hover:bg-white/15"
-                  }`}
+                  aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+                  className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-all"
                 >
-                  {isMuted ? (
-                    <MicOff className="w-6 h-6 text-amber-400" />
-                  ) : (
-                    <Mic className="w-6 h-6 text-white" />
-                  )}
+                  {muted ? <MicOff className="w-6 h-6 text-rose-400" /> : <Mic className="w-6 h-6 text-slate-300" />}
                 </motion.button>
 
-                <motion.div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-2xl shadow-emerald-500/30 relative">
-                  {/* Volume indicator */}
-                  <motion.div
-                    className="absolute inset-0 rounded-full bg-emerald-400/20"
-                    animate={{
-                      scale: 1 + volumeLevel * 0.3,
-                      opacity: volumeLevel * 0.5,
-                    }}
-                    transition={{ duration: 0.1 }}
-                  />
+                <motion.div
+                  animate={{ scale: 1 + volume * 0.25 }}
+                  transition={{ duration: 0.1 }}
+                  className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-2xl shadow-emerald-500/30 relative"
+                >
                   <Waves className="w-10 h-10 text-white relative z-10" />
                 </motion.div>
 
                 <motion.button
+                  aria-label="End call"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={endCall}
@@ -461,19 +375,34 @@ export default function VoiceAgentPage() {
           </div>
         </div>
 
-        {!isConnected && !isConnecting && transcript.length === 0 && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center text-slate-500 text-sm mb-8"
-          >
-            Press the button above to start a live voice call with the RiskPulse
-            AI Banking Agent
-          </motion.p>
+        {(!VAPI_PUBLIC_KEY || !VAPI_ASSISTANT_ID) && (
+          <p className="text-center text-amber-400 text-sm mb-8">
+            Set NEXT_PUBLIC_VAPI_PUBLIC_KEY and NEXT_PUBLIC_VAPI_ASSISTANT_ID in frontend/.env, then restart the dev server.
+          </p>
+        )}
+
+        {callError && <p className="text-center text-rose-400 text-sm mb-8">{callError}</p>}
+
+        {isConnected ? (
+          <div className="flex items-center justify-center gap-2 text-xs text-slate-400 uppercase tracking-widest mb-4">
+            <span className={`w-2 h-2 rounded-full animate-pulse ${assistantSpeaking ? "bg-rose-400" : "bg-emerald-400"}`} />
+            {assistantSpeaking ? "Agent speaking..." : muted ? "Muted" : "Listening..."}
+          </div>
+        ) : (
+          !isConnecting && transcript.length === 0 && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center text-slate-500 text-sm mb-8"
+            >
+              Press the button above to start a live voice call with the RiskPulse
+              AI Banking Agent
+            </motion.p>
+          )
         )}
 
         {/* Two-column layout: Transcript + RiskPulse Events */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           {/* Live Transcript */}
           <div className="bg-[#0F0F11] border border-white/10 rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
@@ -542,31 +471,16 @@ export default function VoiceAgentPage() {
               <div ref={transcriptEndRef} />
             </div>
 
-            {/* Chat Input */}
+            {/* Email Input */}
             {isConnected && (
               <div className="p-4 border-t border-white/10 bg-black/20 space-y-2">
-                <form onSubmit={sendTextMessage} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={textInput}
-                    onChange={(e) => setTextInput(e.target.value)}
-                    placeholder="Type Customer ID (e.g. C123456) or message..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-rose-500/50"
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white text-sm font-medium rounded-lg transition-colors"
-                  >
-                    Send
-                  </button>
-                </form>
                 <form onSubmit={submitEmail} className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-slate-500 shrink-0" />
                   <input
                     type="email"
                     value={authEmail}
                     onChange={(e) => { setAuthEmail(e.target.value); setEmailStatus("idle"); }}
-                    placeholder="Enter your registered email for confirmation..."
+                    placeholder="When the agent asks, type your registered email..."
                     className={`flex-1 bg-white/5 border rounded-lg px-4 py-2 text-sm text-white focus:outline-none placeholder:text-slate-600 ${
                       emailStatus === "verified"
                         ? "border-emerald-500/50 focus:border-emerald-500/70"
@@ -581,17 +495,12 @@ export default function VoiceAgentPage() {
                   >
                     Verify
                   </button>
-                  {emailStatus === "verified" && (
-                    <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-medium whitespace-nowrap">
-                      ✓ Sent
-                    </span>
-                  )}
-                  {emailStatus === "mismatch" && (
-                    <span className="text-[10px] uppercase tracking-wider text-rose-400 font-medium whitespace-nowrap">
-                      ✗ Mismatch
-                    </span>
-                  )}
                 </form>
+                {emailMessage && (
+                  <p className={`text-xs pl-6 ${emailStatus === "verified" ? "text-emerald-400" : "text-rose-400"}`}>
+                    {emailStatus === "verified" ? "✓ " : "✗ "}{emailMessage}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -678,7 +587,7 @@ export default function VoiceAgentPage() {
                           >
                             <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1 flex justify-between">
                               <span>Threat Analysis</span>
-                              {tc.score !== undefined && (
+                              {tc.score != null && (
                                 <span className={getDecisionColor(tc.decision || "")}>
                                   Score: {tc.score}
                                 </span>
@@ -691,8 +600,12 @@ export default function VoiceAgentPage() {
                         )}
                         
                         {/* Latency Footer */}
-                        {tc.moss_ms !== undefined && tc.eval_ms !== undefined && (
+                        {tc.score != null && tc.moss_ms != null && tc.eval_ms != null && (
                           <div className="flex items-center gap-3 mt-3 pt-2 border-t border-white/5 text-[9px] text-slate-500 uppercase tracking-wider font-mono">
+                            <span className="flex items-center gap-1">
+                              <Activity className="w-3 h-3 text-amber-500" />
+                              Embed: {(tc.embed_ms ?? 0).toFixed(0)}ms
+                            </span>
                             <span className="flex items-center gap-1">
                               <Zap className="w-3 h-3 text-cyan-500" />
                               Moss: {tc.moss_ms.toFixed(1)}ms
@@ -702,27 +615,11 @@ export default function VoiceAgentPage() {
                               Engine: {tc.eval_ms.toFixed(1)}ms
                             </span>
                             <span className="ml-auto text-slate-400 font-semibold">
-                              Total: {(tc.moss_ms + tc.eval_ms).toFixed(1)}ms
+                              Total: {((tc.embed_ms ?? 0) + tc.moss_ms + tc.eval_ms).toFixed(1)}ms
                             </span>
                           </div>
                         )}
 
-                        {!tc.result && !tc.explanation && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <motion.div
-                              animate={{ rotate: 360 }}
-                              transition={{
-                                duration: 1,
-                                repeat: Infinity,
-                                ease: "linear",
-                              }}
-                              className="w-3 h-3 border border-t-transparent border-current rounded-full"
-                            />
-                            <span className="text-xs">
-                              Evaluating through RiskPulse...
-                            </span>
-                          </div>
-                        )}
                       </motion.div>
                     );
                   })}
@@ -745,12 +642,12 @@ export default function VoiceAgentPage() {
               <span className="text-xs text-slate-400">Risk Engine Online</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-xs text-slate-400">VAPI Connected</span>
+              <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-400" : "bg-slate-600"}`} />
+              <span className="text-xs text-slate-400">VAPI {isConnected ? "Connected" : "Disconnected"}</span>
             </div>
           </div>
           <div className="text-xs text-slate-600">
-            10 Tools Active — All routed through RiskPulse
+            12 Tools Active — All routed through RiskPulse
           </div>
         </div>
       </div>

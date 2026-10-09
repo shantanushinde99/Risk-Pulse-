@@ -11,16 +11,16 @@
 ## 🌟 Key Features Implemented
 
 1. **Interactive Threat Vector Simulator:** A beautiful, real-time Next.js dashboard that allows you to inject nominal, anomalous, and account takeover (ATO) telemetry directly into the Risk Engine and watch the live semantic retrieval process.
-2. **Dynamic VAPI Voice Agent Integration:** A fully integrated voice agent that seamlessly triggers RiskPulse webhooks for high-risk tools (`transfer_money`, `verify_identity`, `close_account`, etc.).
-3. **Zero-Latency Moss Semantic Retrieval:** Utilizes Moss (a real-time semantic search engine built in Rust and WebAssembly) to fetch historical fraud cases and security policies in sub-10ms. This enables a speed up to 100x faster than traditional vector databases.
+2. **VAPI Voice Agent Integration:** A VAPI assistant whose 12 tools (`verify_identity`, `get_account_summary`, `transfer_money`, `close_account`, etc.) all call the RiskPulse webhook (`/api/vapi/webhook`) before anything executes. Callers must verify a real Customer ID first; unknown IDs are rejected and the call locks after 3 failed attempts.
+3. **Zero-Latency Moss Semantic Retrieval:** The Moss index is loaded in-process once at startup, so each semantic lookup of fraud cases and policies takes ~1ms. The query embedding (Mistral API) is measured and shown separately, since it is a network call.
 4. **Context Leakage Prevention:** Built-in metadata filtering during semantic search to ensure that one user's fraud history does not inadvertently penalize another user's baseline risk score during evaluation.
 5. **Deterministic Hybrid Risk Engine:** Combines static rule thresholds (e.g., 3x average amount) with unstructured semantic insights (e.g., matching a historical fraud case) to output a 0-100 risk score.
-6. **Real-time Email Authentication:** Frontend UI prompts users to type their registered email to authenticate high-risk actions mid-call, preventing leaked Customer IDs from being exploited.
-7. **Automated Mailjet Email Triggers:** Instantly fires off custom transaction confirmation emails via Mailjet upon a successful `ALLOW` decision and email verification.
+6. **Email Step-Up Verification:** When an action scores `VERIFY`, the agent asks the caller to type their registered email on screen. A match (max 3 attempts) lets that one action through, so a leaked Customer ID alone is not enough.
+7. **Automated Mailjet Email Triggers:** Sends a confirmation email via Mailjet after every `ALLOW`ed action.
 
 ## 🛑 The Problem Statement
 
-The rapid adoption of AI Voice Agents (like VAPI, LiveKit) in fintech has created a critical security paradox: **Agents are smart enough to execute transactions, but completely blind to behavioral context.**
+The rapid adoption of AI Voice Agents (like VAPI, OpenAI Realtime) in fintech has created a critical security paradox: **Agents are smart enough to execute transactions, but completely blind to behavioral context.**
 
 When an AI agent is connected directly to a bank's execution APIs, three massive vulnerabilities emerge:
 
@@ -73,27 +73,30 @@ sequenceDiagram
     participant UI as Frontend UI
 
     U->>V: "Transfer $50,000 to John"
-    V->>RP: 1. Propose Action (Webhook)
+    V->>RP: 1. Propose Action (Function Call)
     RP->>M: 2. Embed & Semantic Search
     M-->>RP: 3. Return Context (<10ms)
     Note over RP,M: Retrieves Policies, History, Timelines
     RP->>RP: 4. Evaluate Risk Score
 
-    alt Risk Score >= 85 (High Risk)
-        RP-->>V: 5a. Decision: BLOCK
-        V-->>U: "For your security, I cannot process this transfer right now."
-    else Risk Score < 20 (Safe)
-        RP->>B: 5b. Decision: ALLOW (Execute API)
-        B-->>RP: Success
-        RP-->>V: Return Success Status
-        V-->>U: "Transfer completed successfully. Please type your email to confirm."
+    alt Risk Score >= 85
+        RP-->>V: 5a. BLOCK
+        V-->>U: "For your security, I can't process this transfer right now."
+    else Risk Score 60-84
+        RP-->>V: 5b. ESCALATE
+        V-->>U: "Let me connect you to a specialist."
+    else Risk Score 30-59
+        RP-->>V: 5c. VERIFY
+        V-->>U: "Please type your registered email on screen."
         U->>UI: Types email address
-        UI->>RP: 6. /set-auth-email (Verify match)
-        alt Email Mismatch
-            RP-->>UI: Block transaction retroactively
-        else Email Match
-            RP->>UI: Send Mailjet Confirmation Receipt
-        end
+        UI->>RP: /api/agent/verify-email (call_id, email)
+        U->>V: "Done"
+        V->>RP: Same tool call again
+        RP->>B: ALLOW (step-up passed)
+        RP-->>V: Success + Mailjet receipt
+    else Risk Score < 30
+        RP->>B: 5d. ALLOW (Execute API)
+        RP-->>V: Success + Mailjet receipt
     end
 ```
 
@@ -119,7 +122,7 @@ Final Risk Score = min(20 [Baseline] + 30 [Velocity] + 20 [New Payee] + 25 [Time
                  = 100 / 100
 ```
 
-- **Threshold for `BLOCK`:** $\ge 85$
+- **Thresholds:** `BLOCK` $\ge 85$, `ESCALATE` 60–84, `VERIFY` 30–59, `ALLOW` < 30
 - **Decision Engine Output:** `decision: "BLOCK"`, `confidence: 0.99`
 - **Result:** The Bank Execution API is never invoked. The AI Agent seamlessly informs the caller without dead air: *"For your security, I cannot process this transfer right now. Please visit your nearest branch with a valid photo ID."*
 
@@ -133,7 +136,7 @@ To power the Moss context retrieval engine, we mapped raw transaction data into 
 
 We utilized the **PaySim Mobile Money Fraud dataset**, which provides hyper-realistic synthetic financial logs. Due to the massive file size (470MB), we do not track the raw CSV in this repository.
 
-> **Dataset Download:** You can download the dataset directly from Kaggle: [PaySim Dataset](https://www.kaggle.com/datasets/moonknightmarvel/paysim). Place it in `riskpulse/data/raw/paysim.csv`.
+> **Dataset Download:** You can download the dataset directly from Kaggle: [PaySim Dataset](https://www.kaggle.com/datasets/moonknightmarvel/paysim). Place it in `backend/data/raw/paysim.csv`.
 
 Rather than dumping raw CSVs into Moss, we transformed these transaction lines into **Synthetic Behavioral Profiles**.
 
@@ -188,7 +191,7 @@ graph TD
     Decision -.->|BLOCK / ALLOW| VAPI
 ```
 
-- **Frontend (Next.js 14):** A real-time, cyberpunk-themed security dashboard built with React, TailwindCSS, and Framer Motion. It visualizes the intercepted telemetry stream, Moss retrieval latency, and the final risk decision in real-time.
+- **Frontend (Next.js 16, static export):** A real-time, cyberpunk-themed security dashboard built with React, TailwindCSS, and Framer Motion. It visualizes the intercepted telemetry stream, Moss retrieval latency, and the final risk decision in real-time.
 - **Backend (FastAPI):** A high-performance async Python backend that exposes endpoints for the frontend sandbox and VAPI webhooks.
 - **Vector Database (Moss):** The core intelligence engine mapping timelines and policies. Moss is a real-time semantic search runtime built in Rust and WebAssembly, allowing for sub-10ms lookups with zero infrastructure, making real-time Voice AI guardrails feasible.
 - **Voice Agent (VAPI):** The conversational layer that interacts with the user over WebRTC.
@@ -197,7 +200,7 @@ graph TD
 
 ## 🛠️ Tech Stack
 
-- **Frontend:** Next.js, React, TailwindCSS, Framer Motion, Lucide Icons
+- **Frontend:** Next.js, React, TailwindCSS, Framer Motion, Lucide Icons, VAPI Web SDK
 - **Backend:** Python, FastAPI, Uvicorn, Pydantic
 - **AI/Vector:** Moss Vector DB, Mistral AI (Optional fallback LLM)
 - **Voice & Email:** VAPI, Mailjet
@@ -209,52 +212,54 @@ graph TD
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 18+
-- Moss Project ID & API Key
-- VAPI API Key
-- Mailjet API Key and Secret Key
-- Ngrok (for local webhook tunneling)
+- Python 3.10+ and Node.js 18+
+- Moss project ID & key, Mistral API key
+- VAPI private API key, public key and assistant ID
+- Mailjet API key, secret and a verified sender email
+- A public URL for the backend (Render deploy, or ngrok for local)
 
-### 1. Environment Setup
+### 1. Environment
 
-Create a `.env` file in the `riskpulse/backend` directory:
+Copy the variables from `.env.example` into `backend/.env` and `frontend/.env`.
 
-```env
-MOSS_PROJECT_ID=your_moss_project_id
-MOSS_PROJECT_KEY=your_moss_api_key
-
-MAILJET_API_KEY=your_mailjet_api_key
-MAILJET_SECRET_KEY=your_mailjet_secret_key
-```
-
-### 2. Ingest Synthetic Data into Moss
-
-Before running the engine, you must populate your Moss Vector DB project with the synthetic historical records and policies:
+### 2. Data
 
 ```bash
-# Push the 1,173 high-density synthetic profiles
-cd riskpulse
-ingest_data.bat
-
-# Push the 3 specific demo profiles (used in the UI simulator)
 cd backend
-python ingest_demo_context.py
+python scripts/generate_synthetic_data.py   # optional: regenerates customers/events/policies/cases
+python scripts/ingest_new_customers.py      # adds the demo customers that have registered emails
+python scripts/ingest_moss.py               # (re)builds the Moss index: policies, cases, timelines, 1,000 PaySim rows
 ```
 
-### 3. Run the Stack
+Re-running `ingest_moss.py` deletes and rebuilds the index, which uses Mistral embedding calls and Moss credits.
 
-We have provided a convenient batch script that spins up the Frontend, the Backend, and the Ngrok tunnel simultaneously.
+### 3. Configure the VAPI assistant
 
 ```bash
-cd riskpulse
-start.bat
+cd backend
+python setup_vapi.py --check   # show current tools and server URL
+python setup_vapi.py           # back up config, then apply prompt + 12 tools + VAPI_SERVER_URL
 ```
 
-_Note: Make sure your Python virtual environment is configured correctly if you run into missing module errors._
+### 4. Run
 
-### 3. Usage
+```bash
+./start.sh          # macOS/Linux
+start.bat           # Windows
+```
 
-1. Open the Dashboard at `http://localhost:3000`.
-2. Use the **Threat Vector Simulator** preset buttons to test specific curated scenarios (e.g., Account Takeover).
-3. Navigate to the **Voice Agent** tab to interact with the VAPI AI Assistant directly over your microphone.
+Dashboard: `http://localhost:3000` · API docs: `http://localhost:8000/docs`. For local voice calls, expose port 8000 (e.g. `ngrok http 8000`), set `VAPI_SERVER_URL=https://<ngrok-host>/api/vapi/webhook` and re-run `setup_vapi.py`.
+
+### 5. Try it
+
+- **Threat Vector Simulator:** the three presets give ALLOW, VERIFY and BLOCK.
+- **Voice Agent:** press call, then say a Customer ID:
+  - `C9876543210`: verifies; a transfer asks for the email step-up (registered email in `customers.json`).
+  - `CUST_DEMO_ATO`: blocked at verification (account takeover timeline).
+  - Any made-up ID: rejected; the call locks after 3 tries.
+
+### Tests
+
+```bash
+cd backend && python -m tests.test_guardrail
+```

@@ -55,6 +55,7 @@ class CustomerRequest(BaseModel):
 class ScenarioResponse(BaseModel):
     customer_request: str
     action: AgentAction
+    embedding_latency_ms: float
     moss_latency_ms: float
     backend_latency_ms: float
     risk_evaluation_latency_ms: float

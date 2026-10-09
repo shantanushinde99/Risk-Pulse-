@@ -3,9 +3,6 @@ uvicorn
 pydantic
 python-dotenv
 moss
-mistralai
-pandas
-numpy
-faker
 requests
-fastembed==0.3.3
+pandas
+faker

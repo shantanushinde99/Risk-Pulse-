@@ -12,9 +12,6 @@ start "RiskPulse Backend" cmd /k "cd /d "%~dp0backend" && ..\.venv\Scripts\pytho
 echo Starting Frontend Dashboard (Next.js) in a new window...
 start "RiskPulse Frontend" cmd /k "cd /d "%~dp0frontend" && npm run dev"
 
-echo Starting Ngrok Tunnel (Port 8000) in a new window...
-start "RiskPulse Ngrok" cmd /k "ngrok http --domain=imprudent-tranquil-precise.ngrok-free.dev 8000"
-
 echo.
 echo Both servers are starting up! 
 echo Keep the new command windows open to view logs.

@@ -1,29 +1,42 @@
 import os
+import csv
+import sys
 import json
 import asyncio
 import time
-import sys
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
-MOSS_PROJECT_ID = os.getenv("MOSS_PROJECT_ID")
-MOSS_PROJECT_KEY = os.getenv("MOSS_PROJECT_KEY") or os.getenv("MOSS_API_KEY")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/
+SYNTHETIC_DIR = os.path.join(BASE_DIR, "data", "synthetic")
+sys.path.insert(0, BASE_DIR)
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 from moss import MossClient, DocumentInfo
-
-# Add parent to path so we can import our embedding service
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.services.embedding_service import get_embeddings_batch
+from app.services.moss_service import INDEX_NAME, MOSS_PROJECT_ID, MOSS_PROJECT_KEY, timeline_doc_id
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SYNTHETIC_DIR = os.path.join(BASE_DIR, "data", "synthetic")
 
-# Fallback: check inside backend/data/synthetic if the above doesn't exist
-if not os.path.exists(SYNTHETIC_DIR):
-    SYNTHETIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "synthetic")
+def timeline_document(customer_id: str, events: list) -> dict:
+    events = sorted(events, key=lambda x: x["timestamp"])
+    text = f"Customer {customer_id} timeline events:\n"
+    for e in events:
+        text += f"At {e['timestamp']}, {e['event_type']} occurred: {e['details']}\n"
+    return {
+        "id": timeline_doc_id(customer_id),
+        "text": text,
+        "metadata": {"document_type": "customer_timeline", "customer_id": customer_id},
+    }
 
-INDEX_NAME = "riskpulse-custom-context"
+
+def to_doc_infos(documents: list) -> list:
+    """Embed documents (metadata is prefixed into the text so it's searchable and filterable)."""
+    texts = [
+        "[METADATA: " + " | ".join(f"{k}: {v}" for k, v in d["metadata"].items()) + "]\n" + d["text"]
+        for d in documents
+    ]
+    embeddings = get_embeddings_batch(texts, batch_size=10)
+    return [DocumentInfo(id=d["id"], text=t, embedding=e) for d, t, e in zip(documents, texts, embeddings)]
+
 
 async def ingest():
     if not MOSS_PROJECT_ID or not MOSS_PROJECT_KEY:
@@ -67,33 +80,15 @@ async def ingest():
                 }
             })
 
-    # 3. Load Customer Events (Customer Timeline)
+    # 3. Load Customer Events (one timeline document per customer)
     with open(os.path.join(SYNTHETIC_DIR, "events.json"), "r") as f:
-        events = json.load(f)
         customer_events = {}
-        for e in events:
-            cid = e["customer_id"]
-            if cid not in customer_events:
-                customer_events[cid] = []
-            customer_events[cid].append(e)
-
+        for e in json.load(f):
+            customer_events.setdefault(e["customer_id"], []).append(e)
         for cid, evs in customer_events.items():
-            evs.sort(key=lambda x: x["timestamp"])
-            timeline_text = f"Customer {cid} timeline events:\n"
-            for e in evs:
-                timeline_text += f"At {e['timestamp']}, {e['event_type']} occurred: {e['details']}\n"
-            
-            documents.append({
-                "id": f"TIMELINE_{cid}",
-                "text": timeline_text,
-                "metadata": {
-                    "document_type": "customer_timeline",
-                    "customer_id": cid
-                }
-            })
+            documents.append(timeline_document(cid, evs))
 
     # 4. Load Bulk PaySim Transactions (to prove scale)
-    import csv
     paysim_path = os.path.join(BASE_DIR, "data", "raw", "paysim.csv")
     print("Loading 1,000 raw transactions from PaySim...")
     try:
@@ -128,26 +123,10 @@ async def ingest():
 
     print(f"Prepared {len(documents)} documents for ingestion.")
 
-    # Step 1: Generate embeddings for all documents using Mistral
     print("Generating embeddings via Mistral API (this may take a minute)...")
     start_embed = time.time()
-    
-    texts_to_embed = []
-    for d in documents:
-        meta_str = " | ".join([f"{k}: {v}" for k, v in d.get("metadata", {}).items()])
-        text = f"[METADATA: {meta_str}]\n" + d["text"]
-        texts_to_embed.append(text)
-    
-    embeddings = get_embeddings_batch(texts_to_embed, batch_size=10)
-    embed_time = time.time() - start_embed
-    print(f"Generated {len(embeddings)} embeddings in {embed_time:.2f} seconds.")
-
-    # Step 2: Create DocumentInfo objects with custom embeddings
-    docs_to_ingest = []
-    for i, d in enumerate(documents):
-        meta_str = " | ".join([f"{k}: {v}" for k, v in d.get("metadata", {}).items()])
-        text = f"[METADATA: {meta_str}]\n" + d["text"]
-        docs_to_ingest.append(DocumentInfo(id=d["id"], text=text, embedding=embeddings[i]))
+    docs_to_ingest = to_doc_infos(documents)
+    print(f"Generated {len(docs_to_ingest)} embeddings in {time.time() - start_embed:.2f} seconds.")
 
     # Step 3: Create the index with model_id="custom"
     print(f"Creating index '{INDEX_NAME}' with custom embeddings...")

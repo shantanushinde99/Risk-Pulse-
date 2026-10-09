@@ -14,7 +14,7 @@ def get_fallback_response(decision: str) -> str:
     if decision == "ALLOW":
         return "I've gone ahead and processed that request for you successfully. Is there anything else you need?"
     elif decision == "VERIFY":
-        return "I'd love to help with that, but for your security, I just need to quickly verify your identity first. A link has been sent to your registered device."
+        return "I'd love to help with that, but for your security, I need to complete one more verification step before I can proceed."
     elif decision == "BLOCK":
         return "I'm sorry, but for your security, I can't process this action right now because we couldn't fully authenticate the request. Please visit a branch or contact our fraud department."
     elif decision == "ESCALATE":
@@ -40,7 +40,7 @@ CRITICAL RULES:
 1. DO NOT mention "risk scores", "RiskPulse", "confidence levels", or "internal security systems".
 2. Sound conversational, natural, and empathetic (1-2 short sentences maximum).
 3. If ALLOW: Politely confirm the action was processed successfully.
-4. If VERIFY: Tell them you need to send a quick verification code or link for their security.
+4. If VERIFY: Tell them one more verification step is needed for their security before you can proceed.
 5. If BLOCK: Tell them you cannot process this right now because their identity could not be fully authenticated, or frame it creatively as a routine security measure. Never say "you are blocked".
 6. If ESCALATE: Tell them you are connecting them to a human specialist.
 

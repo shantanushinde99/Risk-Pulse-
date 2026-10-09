@@ -1,185 +1,175 @@
-import requests
+"""
+Configure the VAPI assistant: system prompt, first message, server URL and all RiskPulse tools.
+
+    python setup_vapi.py           # back up current config, then apply
+    python setup_vapi.py --check   # print the assistant's current tools and server URL
+
+Reads VAPI_API_KEY, VAPI_ASSISTANT_ID, VAPI_SERVER_URL and optional VAPI_WEBHOOK_SECRET from backend/.env.
+"""
+import os
+import sys
 import json
+import requests
+from dotenv import load_dotenv
 
-API_KEY = "79b1fc90-5245-4007-8f14-7ee86de5d03f"
-ASSISTANT_ID = "e6f879b5-b9e5-403a-831a-64500dda7057"
-SERVER_URL = "https://imprudent-tranquil-precise.ngrok-free.dev/api/vapi/webhook"
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json"
-}
+API_KEY = os.getenv("VAPI_API_KEY")
+ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
+SERVER_URL = os.getenv("VAPI_SERVER_URL", "https://risk-pulse.onrender.com/api/vapi/webhook")
+WEBHOOK_SECRET = os.getenv("VAPI_WEBHOOK_SECRET")
+BACKUP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vapi_assistant_backup.json")
 
-def make_tool(name, desc, props, required):
+if not API_KEY or not ASSISTANT_ID:
+    sys.exit("Set VAPI_API_KEY and VAPI_ASSISTANT_ID in backend/.env")
+
+URL = f"https://api.vapi.ai/assistant/{ASSISTANT_ID}"
+HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+
+
+def tool(name, desc, props, required):
     return {
         "type": "function",
-        "messages": [
-            {
-                "type": "request-start",
-                "content": "Let me check that for you."
-            },
-            {
-                "type": "request-complete",
-                "content": ""
-            }
-        ],
+        "messages": [{"type": "request-start", "content": "One moment while I check that."}],
         "function": {
             "name": name,
             "description": desc,
-            "parameters": {
-                "type": "object",
-                "properties": props,
-                "required": required
-            }
+            "parameters": {"type": "object", "properties": props, "required": required},
         },
-        "server": {
-            "url": SERVER_URL
-        }
     }
 
-tools = [
-    make_tool(
-        "transfer_money",
-        "Transfer money from the customer's account to another account. Always call this when the customer wants to send money, make a payment, or transfer funds.",
-        {
-            "amount": {"type": "number", "description": "The amount to transfer in rupees"},
-            "beneficiary_status": {"type": "string", "description": "Whether the recipient is a NEW or EXISTING beneficiary", "enum": ["NEW", "EXISTING"]}
-        },
-        ["amount", "beneficiary_status"]
-    ),
-    make_tool(
-        "change_phone_number",
-        "Change the customer's registered mobile phone number on their account. Call this when a customer wants to update their phone number.",
-        {
-            "new_phone_number": {"type": "string", "description": "The new phone number the customer wants to register"}
-        },
-        ["new_phone_number"]
-    ),
-    make_tool(
-        "change_email",
-        "Change the customer's registered email address on their account. Call this when a customer wants to update their email.",
-        {
-            "new_email": {"type": "string", "description": "The new email address the customer wants to register"}
-        },
-        ["new_email"]
-    ),
-    make_tool(
-        "process_refund",
-        "Process a refund for the customer. Call this when the customer requests a refund for a transaction, charge, or payment.",
-        {
-            "amount": {"type": "number", "description": "The refund amount in rupees"},
-            "reason": {"type": "string", "description": "The reason for the refund"}
-        },
-        ["amount"]
-    ),
-    make_tool(
-        "add_beneficiary",
-        "Add a new beneficiary or payee to the customer's account. Call this when a customer wants to add someone as a new payment recipient.",
-        {
-            "beneficiary_name": {"type": "string", "description": "The name of the new beneficiary"},
-            "account_number": {"type": "string", "description": "The beneficiary's account number"}
-        },
-        ["beneficiary_name"]
-    ),
-    make_tool(
-        "reset_pin",
-        "Reset the customer's ATM or debit card PIN. Call this when a customer has forgotten their PIN or wants to change it.",
-        {
-            "card_type": {"type": "string", "description": "The type of card to reset PIN for", "enum": ["DEBIT", "CREDIT"]}
-        },
-        ["card_type"]
-    ),
-    make_tool(
-        "increase_credit_limit",
-        "Request an increase in the customer's credit card spending limit. Call this when a customer wants a higher credit limit.",
-        {
-            "amount": {"type": "number", "description": "The requested new credit limit amount in rupees"}
-        },
-        ["amount"]
-    ),
-    make_tool(
-        "enable_international_transactions",
-        "Enable international transactions on the customer's debit or credit card. Call this when a customer wants to use their card for overseas purchases or ATM withdrawals abroad.",
-        {
-            "card_type": {"type": "string", "description": "The type of card to enable international transactions on", "enum": ["DEBIT", "CREDIT"]}
-        },
-        ["card_type"]
-    ),
-    make_tool(
-        "close_account",
-        "Close the customer's bank account. Call this when a customer requests to close or terminate their account.",
-        {
-            "reason": {"type": "string", "description": "The reason for closing the account"}
-        },
-        ["reason"]
-    ),
-    make_tool(
-        "withdraw_fixed_deposit",
-        "Withdraw or break a fixed deposit before its maturity date. Call this when a customer wants to prematurely close their FD and withdraw the funds.",
-        {
-            "amount": {"type": "number", "description": "The fixed deposit amount to withdraw in rupees"},
-            "fd_id": {"type": "string", "description": "The fixed deposit ID or reference number if the customer provides it"}
-        },
-        ["amount"]
-    )
+
+def num(desc):
+    return {"type": "number", "description": desc}
+
+
+def text(desc, enum=None):
+    return {"type": "string", "description": desc, **({"enum": enum} if enum else {})}
+
+
+TOOLS = [
+    tool("verify_identity",
+         "Verify the caller's identity using their Customer ID. Call this as soon as the customer gives their Customer ID, and before any banking action.",
+         {"customer_id": text("The customer's ID exactly as spoken, e.g. C9876543210 or CUST_DEMO_SAFE")},
+         ["customer_id"]),
+    tool("get_account_summary",
+         "Look up the caller's account status and details (account status, how long it has been open, saved payees, registered email). Call this for ANY question about the caller's own account.",
+         {},
+         []),
+    tool("transfer_money",
+         "Transfer money to another account. Call this when the customer wants to send money, pay someone, or transfer funds.",
+         {"amount": num("The amount to transfer in rupees"),
+          "beneficiary_name": text("Name of the person or business receiving the money"),
+          "beneficiary_account": text("The recipient's account number or IBAN, if the customer provides it")},
+         ["amount", "beneficiary_name"]),
+    tool("change_phone_number",
+         "Change the customer's registered mobile number.",
+         {"new_phone_number": text("The new phone number to register")},
+         ["new_phone_number"]),
+    tool("change_email",
+         "Change the customer's registered email address.",
+         {"new_email": text("The new email address to register")},
+         ["new_email"]),
+    tool("process_refund",
+         "Process a refund for a transaction, charge, or payment.",
+         {"amount": num("The refund amount in rupees"), "reason": text("The reason for the refund")},
+         ["amount"]),
+    tool("add_beneficiary",
+         "Add a new beneficiary or payee to the customer's account.",
+         {"beneficiary_name": text("Name of the new beneficiary"), "account_number": text("The beneficiary's account number")},
+         ["beneficiary_name"]),
+    tool("reset_pin",
+         "Reset the customer's ATM, debit or credit card PIN.",
+         {"card_type": text("The card whose PIN should be reset", ["DEBIT", "CREDIT"])},
+         ["card_type"]),
+    tool("increase_credit_limit",
+         "Request a higher credit card limit.",
+         {"amount": num("The requested new credit limit in rupees")},
+         ["amount"]),
+    tool("enable_international_transactions",
+         "Enable international transactions on the customer's card, e.g. for travel or overseas purchases.",
+         {"card_type": text("The card to enable", ["DEBIT", "CREDIT"])},
+         ["card_type"]),
+    tool("close_account",
+         "Close the customer's bank account.",
+         {"reason": text("The reason for closing the account")},
+         ["reason"]),
+    tool("withdraw_fixed_deposit",
+         "Prematurely withdraw (break) a fixed deposit.",
+         {"amount": num("The fixed deposit amount to withdraw in rupees"), "fd_id": text("The fixed deposit ID, if provided")},
+         ["amount"]),
 ]
 
-url = f"https://api.vapi.ai/assistant/{ASSISTANT_ID}"
-print(f"Fetching VAPI Assistant {ASSISTANT_ID}...")
+SYSTEM_PROMPT = """You are a professional, friendly and secure AI banking voice agent for RiskPulse Bank.
 
-# First GET the assistant to preserve the existing model configuration (provider, model name, etc)
-get_resp = requests.get(url, headers=headers)
-if get_resp.status_code != 200:
-    print(f"Failed to fetch assistant: {get_resp.text}")
-    exit(1)
+Every sensitive action MUST go through a tool. The tools decide whether an action is allowed; you never decide that yourself.
 
-assistant = get_resp.json()
-model_obj = assistant.get("model", {})
+RULES:
+1. You have NO knowledge of any caller's account. Never state or guess account status, balances, transactions, payees or personal details. The only source of account facts is a tool result in this call.
+2. Every caller is unverified until verify_identity succeeds in this call. When the caller gives a Customer ID, call verify_identity immediately with it.
+3. Never say an action is done unless a tool result says so. For any banking request or question about the caller's account, call the matching tool. If the tool asks for a Customer ID, ask the caller for it, call verify_identity, then call the original tool again with the same details.
+4. If a tool asks the caller to type their registered email on screen, wait until they say they've done it, then call the same tool again with the same details.
+5. Read the tool's result to the caller naturally, keeping every fact and reference number. Never add your own conclusions.
+6. Never mention risk scores, RiskPulse, confidence levels or internal security systems.
+7. Keep replies to 1-3 short sentences. No lists, emojis or markdown.
 
-# Update the tools array
-model_obj["tools"] = tools
+TOOLS:
+- Customer ID given: verify_identity
+- Account status or details: get_account_summary
+- Send money or pay someone: transfer_money
+- Update mobile number: change_phone_number
+- Update email address: change_email
+- Refund: process_refund
+- Add a payee: add_beneficiary
+- Forgot or change PIN: reset_pin
+- Higher credit limit: increase_credit_limit
+- Card abroad or international payments: enable_international_transactions
+- Close account: close_account
+- Break a fixed deposit: withdraw_fixed_deposit
 
-# Update the system prompt
-system_prompt = """You are a professional, highly secure AI banking agent for RiskPulse Bank. You assist customers over the phone with their banking needs. 
+Only general questions that are not about the caller's own account (e.g. branch hours, what a fixed deposit is) may be answered without tools. If unsure, use a tool."""
 
-You have access to a suite of security-hardened tools. RiskPulse is our zero-latency contextual risk and safety layer. EVERY sensitive action you take MUST be routed through RiskPulse by calling the appropriate tool. 
 
-CRITICAL RULES:
-1. NEVER confirm or execute an action without calling a tool first.
-2. If a customer asks to perform any of the actions below, you MUST immediately call the corresponding tool.
-3. Once the tool returns a result, you MUST read the EXACT response provided by the tool back to the customer naturally. Do not paraphrase it or add your own conclusions.
+def main():
+    resp = requests.get(URL, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    assistant = resp.json()
+    model = assistant.get("model", {})
 
-TOOL MAPPING GUIDE:
-- If customer wants to send money or make a payment: CALL `transfer_money`
-- If customer wants to update their mobile number: CALL `change_phone_number`
-- If customer wants to update their email address: CALL `change_email`
-- If customer wants a refund for a transaction: CALL `process_refund`
-- If customer wants to add a new payee/beneficiary: CALL `add_beneficiary`
-- If customer forgot their PIN or wants to reset it: CALL `reset_pin`
-- If customer asks for a higher credit limit: CALL `increase_credit_limit`
-- If customer is traveling and needs international transactions on: CALL `enable_international_transactions`
-- If customer wants to close their bank account: CALL `close_account`
-- If customer wants to prematurely break a fixed deposit: CALL `withdraw_fixed_deposit`
+    if "--check" in sys.argv:
+        print(f"Assistant: {assistant.get('name')} ({ASSISTANT_ID})")
+        print(f"Server URL: {(assistant.get('server') or {}).get('url') or assistant.get('serverUrl')}")
+        print(f"Standalone toolIds: {model.get('toolIds') or []}")
+        for t in model.get("tools", []):
+            print(f"- {t.get('function', {}).get('name')}")
+        return
 
-If the customer is just asking general questions, you can answer them conversationally. But for any action listed above, ALWAYS trigger the tool."""
+    with open(BACKUP_PATH, "w") as f:
+        json.dump(assistant, f, indent=2)
+    print(f"Backed up current assistant config to {BACKUP_PATH}")
 
-model_obj["messages"] = [
-    {
-        "role": "system",
-        "content": system_prompt
+    model["tools"] = TOOLS
+    model["toolIds"] = []  # all tools now live inline; avoids duplicate verify_identity definitions
+    model["messages"] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    server = {"url": SERVER_URL, "timeoutSeconds": 20}
+    if WEBHOOK_SECRET:
+        server["headers"] = {"x-vapi-secret": WEBHOOK_SECRET}
+
+    payload = {
+        "firstMessage": "Welcome to RiskPulse Bank. To get started, could you please tell me your Customer ID?",
+        "model": model,
+        "server": server,
     }
-]
+    patch = requests.patch(URL, headers=HEADERS, json=payload, timeout=15)
+    if patch.status_code != 200:
+        sys.exit(f"Update failed ({patch.status_code}): {patch.text}")
+    applied = requests.get(URL, headers=HEADERS, timeout=15).json()
+    if applied["model"]["messages"][0]["content"] != SYSTEM_PROMPT:
+        sys.exit("Update did not stick: the assistant's prompt differs from setup_vapi.py.")
+    print(f"Updated assistant with {len(TOOLS)} tools -> {SERVER_URL}")
+    print("Note: saving the assistant from an already-open VAPI dashboard tab will overwrite this. Reload the tab first.")
 
-payload = {
-    "firstMessage": "Welcome to RiskPulse Bank. How can I help you today?",
-    "model": model_obj
-}
 
-print(f"Updating VAPI Assistant {ASSISTANT_ID} with 10 tools and new prompts...")
-response = requests.patch(url, headers=headers, json=payload)
-
-if response.status_code == 200:
-    print("Successfully updated VAPI Assistant tools!")
-else:
-    print(f"Failed: {response.status_code}")
-    print(response.text)
+if __name__ == "__main__":
+    main()

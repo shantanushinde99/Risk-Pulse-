@@ -5,3 +5,5 @@ __pycache__/
 .env
 .DS_Store
 *.csv
+vapi_assistant_backup.json
+frontend/out/
