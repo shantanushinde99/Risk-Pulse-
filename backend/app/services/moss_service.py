@@ -25,6 +25,14 @@ _timelines_at = float("-inf")
 _refresh_task: Optional[asyncio.Task] = None
 
 
+def is_ready() -> bool:
+    return _index_loaded
+
+
+def timelines_cached() -> int:
+    return len(_timelines)
+
+
 def timeline_doc_id(customer_id: str) -> str:
     return f"TIMELINE_{customer_id}"
 

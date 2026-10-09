@@ -15,6 +15,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env
 from app.models.schemas import ScenarioResponse, AgentAction, CustomerProfile
 from app.services.data_service import get_scenario_data, load_customer
 from app.services.moss_service import search_context, warm_up
+from app.services import moss_service
 from app.services.risk_engine import evaluate_risk
 from app.services.agent_service import generate_agent_response
 from app.services import vapi_service
@@ -41,7 +42,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "moss_index_loaded": moss_service.is_ready(), "timelines_cached": moss_service.timelines_cached()}
 
 
 # ─────────────────────────────────────────────
